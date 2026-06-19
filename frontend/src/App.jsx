@@ -3,7 +3,7 @@ import Navbar from "./components/Navbar";
 import Home from "./pages/Home";
 import Draft from "./pages/Draft";
 import Result from "./pages/Result";
-import Leaderboard from "./pages/Leaderboard";
+import Scorecard from "./pages/Scorecard";
 import "./App.css";
 
 function App() {
@@ -12,9 +12,9 @@ function App() {
       <Navbar />
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/draft" element={<Draft />} />
+        <Route path="/draft/:mode" element={<Draft />} />
         <Route path="/result" element={<Result />} />
-        <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/scorecard/:matchId" element={<Scorecard />} />
       </Routes>
     </BrowserRouter>
   );

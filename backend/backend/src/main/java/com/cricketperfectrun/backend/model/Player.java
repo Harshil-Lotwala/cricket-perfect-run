@@ -1,0 +1,33 @@
+package com.cricketperfectrun.backend.model;
+
+public record Player(
+        int id,
+        String name,
+        String team,
+        int year,
+        String mode,
+        String role,
+        String country,
+        boolean overseas,
+        boolean keeperEligible,
+        int rating,
+        int matches,
+        int wins,
+        int losses,
+        int runs,
+        int ballsFaced,
+        int dismissals,
+        int wickets,
+        int ballsBowled,
+        int runsConceded,
+        int catches,
+        int stumpings,
+        int playerOfMatchAwards,
+        double battingAverage,
+        double strikeRate,
+        double bowlingAverage,
+        double economy,
+        double leadershipScore,
+        double keepingScore,
+        String statsSummary
+) {}
