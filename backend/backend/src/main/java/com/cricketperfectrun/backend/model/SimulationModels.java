@@ -34,7 +34,7 @@ public final class SimulationModels {
             List<SquadMember> members
     ) {}
 
-    public record BattingLine(String name, int runs, int balls, boolean out, String dismissal) {}
+    public record BattingLine(String name, int runs, int balls, boolean out, boolean batted, String dismissal) {}
 
     public record BowlingLine(String name, double overs, int runs, int wickets) {}
 

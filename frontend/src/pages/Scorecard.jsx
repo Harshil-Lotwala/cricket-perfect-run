@@ -61,15 +61,20 @@ function Innings({ card }) {
         {card.batting.map((line, i) => (
           <div
             key={line.name + i}
-            className={`grid grid-cols-[2fr_1fr_1fr_1fr] px-4 py-2 text-sm ${i % 2 ? "bg-slate-900" : "bg-slate-900/50"}`}
+            className={`grid grid-cols-[2fr_1fr_1fr_1fr] px-4 py-2 text-sm ${
+              !line.batted ? "bg-slate-900/30 text-slate-500" : i % 2 ? "bg-slate-900" : "bg-slate-900/50"
+            }`}
           >
             <span>
-              {line.name} <span className="text-slate-500 text-xs">{line.out ? "" : "not out"}</span>
+              {line.name}{" "}
+              <span className="text-slate-500 text-xs">
+                {!line.batted ? "did not bat" : line.out ? "" : "not out*"}
+              </span>
             </span>
-            <span className="text-center font-semibold">{line.runs}</span>
-            <span className="text-center">{line.balls}</span>
+            <span className="text-center font-semibold">{line.batted ? line.runs : "-"}</span>
+            <span className="text-center">{line.batted ? line.balls : "-"}</span>
             <span className="text-center">
-              {line.balls > 0 ? ((line.runs / line.balls) * 100).toFixed(1) : "0.0"}
+              {line.batted && line.balls > 0 ? ((line.runs / line.balls) * 100).toFixed(1) : "-"}
             </span>
           </div>
         ))}

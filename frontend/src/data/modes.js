@@ -29,7 +29,7 @@ export const GAME_MODES = {
     rerollYear: 2,
     perfectTarget: 11,
     supportsOpponentTypes: true,
-    available: false,
+    available: true,
   },
 
   "t20-world-cup": {
@@ -44,7 +44,7 @@ export const GAME_MODES = {
     rerollYear: 2,
     perfectTarget: 8,
     supportsOpponentTypes: true,
-    available: false,
+    available: true,
   },
 
   wtc: {
@@ -59,7 +59,7 @@ export const GAME_MODES = {
     rerollYear: 2,
     perfectTarget: 14,
     supportsOpponentTypes: true,
-    available: false,
+    available: true,
   },
 };
 

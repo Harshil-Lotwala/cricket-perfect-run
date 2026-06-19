@@ -250,33 +250,50 @@ public class SimulationService {
             Random rng, Map<String, int[]> agg, boolean aggregate
     ) {
         int n = order.size();
-        double[] weights = new double[n];
+        // Cricket-legal innings shape: exactly `wicketsLost` batters are dismissed; the pair left
+        // at the crease are not out (just 1 if the side is bowled out); everyone after them
+        // did not bat. So the number of batters who actually batted is:
+        int battedCount = wicketsLost >= 9 ? n : Math.min(n, wicketsLost + 2);
+        int notOutCount = battedCount - wicketsLost; // 1 (all out) or 2 (pair at crease)
+
+        // Weight only the batters who actually batted.
+        double[] weights = new double[battedCount];
         double sum = 0;
-        for (int i = 0; i < n; i++) {
-            double positionFactor = Math.max(0.15, 1.0 - i * 0.09); // top order weighted higher
+        for (int i = 0; i < battedCount; i++) {
+            double positionFactor = Math.max(0.2, 1.0 - i * 0.08); // top order weighted higher
             double w = (0.2 + order.get(i).battingScore()) * positionFactor * (0.7 + rng.nextDouble() * 0.6);
             weights[i] = w;
             sum += w;
         }
 
-        List<BattingLine> lines = new ArrayList<>();
+        List<BattingLine> batted = new ArrayList<>();
+        List<BattingLine> didNotBat = new ArrayList<>();
         int allocated = 0;
         for (int i = 0; i < n; i++) {
+            String name = order.get(i).name();
+            if (i >= battedCount) {
+                didNotBat.add(new BattingLine(name, 0, 0, false, false, "did not bat"));
+                continue;
+            }
             int runs = sum == 0 ? 0 : (int) Math.round(totalRuns * weights[i] / sum);
-            if (i == n - 1) {
+            if (i == battedCount - 1) {
                 runs = Math.max(0, totalRuns - allocated);
             }
             allocated += runs;
             double sr = 0.9 + order.get(i).battingScore() * 0.7; // better batters score faster
-            int balls = Math.max(runs == 0 ? 0 : 1, (int) Math.round(runs / Math.max(0.6, sr)));
-            boolean out = i < wicketsLost;
-            lines.add(new BattingLine(order.get(i).name(), runs, balls, out, out ? "out" : "not out"));
+            int balls = Math.max(1, (int) Math.round(runs / Math.max(0.6, sr)));
+            // The last `notOutCount` batters in the order are the not-out pair at the crease.
+            boolean out = i < (battedCount - notOutCount);
+            batted.add(new BattingLine(name, runs, balls, out, true, out ? "out" : "not out"));
 
             if (aggregate && agg != null) {
-                agg.computeIfAbsent(order.get(i).name(), k -> new int[3])[0] += runs;
+                agg.computeIfAbsent(name, k -> new int[3])[0] += runs;
             }
         }
-        lines.sort(Comparator.comparingInt(BattingLine::runs).reversed());
+
+        batted.sort(Comparator.comparingInt(BattingLine::runs).reversed());
+        List<BattingLine> lines = new ArrayList<>(batted);
+        lines.addAll(didNotBat);
         return lines;
     }
 
