@@ -246,6 +246,7 @@ Example simulation body:
 - Captain and keeper IDs are folded into the seeded random stream, making those selections consequential and reproducible.
 - Historical opponents are strength-ranked within the selected era.
 - Only one season-version of a franchise or country can enter a competition.
+- Draft cards show each player's real cricket country code (such as `NZL`, `AUS`, `IND`, or `WI`) in every format.
 - Franchise renames such as Delhi Daredevils/Delhi Capitals, Kings XI Punjab/Punjab Kings, and Royal Challengers Bangalore/Bengaluru share one identity.
 - Knockout opponents come from qualified league positions, never from a separate random pool.
 - Test matches use four innings, draws, declarations/unfinished innings, and ball-correct over notation.

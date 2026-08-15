@@ -6,6 +6,7 @@ import api from "../services/api";
 import useGameStore from "../store/useGameStore";
 import FieldFormation from "../components/FieldFormation";
 import { GAME_MODES, OPPONENT_TYPES } from "../data/modes";
+import { cricketCountryCode } from "../utils/countryCodes";
 
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
 
@@ -282,27 +283,33 @@ function Draft() {
                   key={`${display.year}-${display.team}-${spinning}`}
                   initial={{ opacity: 0.3, y: spinning ? -6 : 0 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="reveal-card rounded-none p-7 text-center mb-3"
+                  className="reveal-card rounded-none px-4 py-5 sm:px-5 sm:py-6 mb-3"
                 >
-                  <Sparkles className="mx-auto mb-3 text-lime-300" size={20} />
-                  <h2 className={`text-2xl font-black ${spinning ? "text-slate-400" : ""}`}>
-                    {isLoadingMeta ? "Loading…" : display.team ?? "Rolling…"}
-                  </h2>
-                  <p className="text-blue-400 font-bold">{display.year ?? "—"} squad</p>
-                  {spinning && <p className="text-xs text-slate-500 mt-1">Spinning…</p>}
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0 text-left">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300 mb-1">
+                        {spinning ? "Drawing squad" : "Squad drawn"}
+                      </p>
+                      <h2 className={`text-xl sm:text-2xl font-black truncate ${spinning ? "text-slate-400" : ""}`}>
+                        {isLoadingMeta ? "Loading…" : display.team ?? "Rolling…"}
+                      </h2>
+                      <p className="text-slate-400 text-sm font-semibold">{display.year ?? "—"} season</p>
+                    </div>
+                    <Sparkles className="shrink-0 text-lime-300" size={22} aria-hidden="true" />
+                  </div>
                 </motion.div>
 
-                <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
                   <button onClick={loadSquad} disabled={isLoadingPlayers || isSquadLoaded || spinning || !currentTeam}
-                    className="bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:cursor-not-allowed px-3 py-2.5 rounded-none font-bold text-sm">
+                    className="bg-lime-300 hover:bg-lime-200 text-slate-950 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed px-3 py-2.5 rounded-none font-black text-sm">
                     {isLoadingPlayers ? "Indexing…" : isSquadLoaded ? "Loaded" : "Load Squad"}
                   </button>
                   <button onClick={() => store.rerollTeam()} disabled={teamRerollsLeft === 0 || spinning}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed px-3 py-2.5 rounded-none font-semibold text-sm">
+                    className="border border-slate-600 bg-slate-900/40 hover:border-slate-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-none font-semibold text-sm">
                     Reroll Team ({teamRerollsLeft})
                   </button>
                   <button onClick={() => store.rerollYear()} disabled={yearRerollsLeft === 0 || spinning}
-                    className="bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:cursor-not-allowed px-3 py-2.5 rounded-none font-semibold text-sm">
+                    className="border border-slate-600 bg-slate-900/40 hover:border-slate-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-none font-semibold text-sm">
                     Reroll Year ({yearRerollsLeft})
                   </button>
                 </div>
@@ -335,9 +342,9 @@ function Draft() {
                       const cannotDraft = alreadyPicked || blockedByOverseas || blockedByKeeperRequirement;
                       return (
                         <div key={player.id}
-                          className={`flex items-center gap-3 rounded-none border p-3 ${cannotDraft ? "border-slate-800 opacity-50" : "border-slate-700 hover:border-blue-500"}`}>
-                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-none ${player.overseas ? "bg-sky-900 text-sky-200" : "bg-slate-700 text-slate-200"}`}>
-                            {player.overseas ? "OVS" : "IND"}
+                          className={`grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2 rounded-none border p-3 ${cannotDraft ? "border-slate-800 opacity-50" : "border-slate-700 hover:border-slate-500"}`}>
+                          <span className="text-[10px] font-black tracking-wide px-1.5 py-1 rounded-none bg-slate-800 text-slate-300" title={player.country || "Country unavailable"}>
+                            {cricketCountryCode(player.country, player.overseas)}
                           </span>
                           <div className="flex-1 min-w-0">
                             <p className="font-bold flex items-center gap-1 truncate">
@@ -350,9 +357,9 @@ function Draft() {
                             {blockedByKeeperRequirement && <p className="text-yellow-300 text-xs">Final pick must be a wicketkeeper</p>}
                             {alreadyPicked && <p className="text-red-400 text-xs">Already drafted</p>}
                           </div>
-                          {!hardMode && <span className="text-2xl font-black text-yellow-400 w-10 text-right">{player.rating}</span>}
+                          {!hardMode && <span className="text-lg sm:text-xl font-black tabular-nums text-slate-200 sm:w-10 text-right">{player.rating}</span>}
                           <button onClick={() => store.draftPlayer(player)} disabled={cannotDraft}
-                            className="bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-500 px-3 py-2 rounded-none font-bold text-sm whitespace-nowrap">
+                            className="col-start-2 sm:col-start-auto justify-self-start sm:justify-self-auto border border-lime-400/70 text-lime-200 hover:bg-lime-300 hover:text-slate-950 disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500 px-3 py-1.5 rounded-none font-bold text-sm whitespace-nowrap">
                             Draft
                           </button>
                         </div>
