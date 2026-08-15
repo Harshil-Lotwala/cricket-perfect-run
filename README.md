@@ -156,7 +156,7 @@ Use two terminal windows from the repository root.
 
 ```bash
 cd backend/backend
-./mvnw spring-boot:run
+./mvnw clean spring-boot:run
 ```
 
 The API starts at `http://localhost:8080`.
@@ -169,7 +169,13 @@ npm install
 npm run dev
 ```
 
-Open the exact URL printed by Vite, normally `http://localhost:5173`. If that port is occupied, Vite automatically selects another port such as `5174`.
+The development ports are intentionally fixed: the backend uses `8080` and Vite uses `5173`.
+If either port is occupied, stop that older process before restarting; Vite will report the conflict
+instead of silently opening `5174` and leaving you on an outdated tab. Running Maven with `clean`
+also removes stale compiled classes, while the configured Spring Boot main class prevents duplicate
+entry-point discovery.
+
+Open `http://localhost:5173`. If that port is occupied, Vite now stops with a clear error so an older frontend cannot remain hidden behind a second port.
 
 The Vite development server proxies `/api` requests to port `8080`. Both processes must remain running.
 
