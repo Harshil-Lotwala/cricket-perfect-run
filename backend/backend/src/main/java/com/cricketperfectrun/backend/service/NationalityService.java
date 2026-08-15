@@ -1,24 +1,13 @@
 package com.cricketperfectrun.backend.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
+import com.cricketperfectrun.backend.model.PlayerSeasonStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.io.InputStream;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 /**
  * Derives each player's nationality purely from the imported international datasets.
@@ -41,8 +30,6 @@ public class NationalityService {
     private static final String[] INTERNATIONAL_MODES = {"odi-world-cup", "t20-world-cup", "wtc"};
 
     private final CricsheetParserService parserService;
-    private final ObjectMapper mapper = new ObjectMapper();
-
     // Lazily computed: player name -> resolved country.
     private final AtomicReference<Map<String, String>> countryByPlayer = new AtomicReference<>();
 
@@ -84,22 +71,17 @@ public class NationalityService {
         Map<String, Map<String, Integer>> counts = new HashMap<>();
 
         for (String mode : INTERNATIONAL_MODES) {
-            Path folder;
             try {
-                folder = parserService.modeFolder(mode);
+                for (PlayerSeasonStats stats : parserService.getPlayerStats(mode)) {
+                    if (stats.playerName() == null || stats.playerName().isBlank()
+                            || stats.team() == null || stats.team().isBlank()) {
+                        continue;
+                    }
+                    counts.computeIfAbsent(stats.playerName(), ignored -> new HashMap<>())
+                            .merge(stats.team(), Math.max(1, stats.matches()), Integer::sum);
+                }
             } catch (RuntimeException e) {
-                LOGGER.warn("Skipping nationality scan for mode {}: {}", mode, e.getMessage());
-                continue;
-            }
-
-            Path archive = folder.resolveSibling(folder.getFileName() + ".zip");
-            if (Files.isRegularFile(archive)) {
-                scanArchive(archive, counts);
-            } else try (Stream<Path> files = Files.list(folder)) {
-                files.filter(path -> path.toString().endsWith(".json"))
-                        .forEach(path -> scanFile(path, counts));
-            } catch (Exception e) {
-                LOGGER.warn("Failed scanning nationality data in {}", folder, e);
+                LOGGER.warn("Skipping nationality data for mode {}: {}", mode, e.getMessage());
             }
         }
 
@@ -122,57 +104,4 @@ public class NationalityService {
         return resolved;
     }
 
-    private void scanFile(Path path, Map<String, Map<String, Integer>> counts) {
-        // Stop after the small info.players object instead of parsing every ball in the match.
-        try (InputStream input = Files.newInputStream(path)) {
-            scanStream(input, counts);
-        } catch (Exception e) {
-            // Ignore unreadable files; nationality is best-effort.
-        }
-    }
-
-    private void scanArchive(Path archive, Map<String, Map<String, Integer>> counts) {
-        try (ZipFile zip = new ZipFile(archive.toFile())) {
-            for (ZipEntry entry : Collections.list(zip.entries())) {
-                if (entry.isDirectory() || !entry.getName().endsWith(".json")) {
-                    continue;
-                }
-                try (InputStream input = zip.getInputStream(entry)) {
-                    scanStream(input, counts);
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.warn("Failed scanning nationality archive {}", archive, e);
-        }
-    }
-
-    private void scanStream(InputStream input, Map<String, Map<String, Integer>> counts) {
-        try (JsonParser parser = mapper.getFactory().createParser(input)) {
-            while (parser.nextToken() != null) {
-                if (parser.currentToken() == JsonToken.FIELD_NAME && "players".equals(parser.currentName())) {
-                    parser.nextToken();
-                    JsonNode players = mapper.readTree(parser);
-                    if (!players.isObject()) {
-                        return;
-                    }
-
-                    Iterator<String> teams = players.fieldNames();
-                    while (teams.hasNext()) {
-                        String team = teams.next();
-                        for (JsonNode playerNode : players.path(team)) {
-                            String name = playerNode.asText("");
-                            if (name.isBlank()) {
-                                continue;
-                            }
-                            counts.computeIfAbsent(name, ignored -> new HashMap<>())
-                                    .merge(team, 1, Integer::sum);
-                        }
-                    }
-                    return;
-                }
-            }
-        } catch (Exception e) {
-            // Nationality is best-effort; ignore an unreadable match entry.
-        }
-    }
 }

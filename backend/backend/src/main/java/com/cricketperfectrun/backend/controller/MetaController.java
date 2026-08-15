@@ -15,7 +15,6 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/meta")
-@CrossOrigin
 public class MetaController {
 
     private final CricsheetParserService parserService;

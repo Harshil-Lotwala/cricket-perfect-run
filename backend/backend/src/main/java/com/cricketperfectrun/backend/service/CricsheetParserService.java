@@ -174,10 +174,17 @@ public class CricsheetParserService {
     }
 
     private List<PlayerSeasonStats> loadStatsForMode(String mode) {
-        Path folder = resolveModeFolder(mode);
-        List<PlayerSeasonStats> cached = readDiskCache(mode, folder);
-        if (cached != null) {
-            return cached;
+        Path folder = findModeFolder(mode);
+        if (folder == null) {
+            List<PlayerSeasonStats> bundled = readBundledCache(mode);
+            if (bundled != null) {
+                return bundled;
+            }
+            throw new IllegalStateException("Cricket data is unavailable for mode: " + mode);
+        }
+        List<PlayerSeasonStats> diskCached = readDiskCache(mode, folder);
+        if (diskCached != null) {
+            return diskCached;
         }
         Map<String, MutableStats> statsByPlayerSeason = new HashMap<>();
 
@@ -224,6 +231,20 @@ public class CricsheetParserService {
                 .toList();
         writeDiskCache(mode, folder, stats);
         return stats;
+    }
+
+    private List<PlayerSeasonStats> readBundledCache(String mode) {
+        String resource = "/cricket-data/" + CACHE_VERSION + "-" + mode + ".json";
+        try (InputStream input = CricsheetParserService.class.getResourceAsStream(resource)) {
+            if (input == null) {
+                return null;
+            }
+            CachedStats cached = mapper.readValue(input, CachedStats.class);
+            LOGGER.info("Loaded {} bundled {} player-season records", cached.stats().size(), mode);
+            return List.copyOf(cached.stats());
+        } catch (Exception exception) {
+            throw new IllegalStateException("Bundled cricket data is unreadable for mode: " + mode, exception);
+        }
     }
 
     private List<Map<String, MutableStats>> parseArchive(Path archive, String mode) throws IOException {
@@ -555,6 +576,14 @@ public class CricsheetParserService {
     }
 
     private Path resolveModeFolder(String mode) {
+        Path folder = findModeFolder(mode);
+        if (folder != null) {
+            return folder;
+        }
+        throw new IllegalStateException("Could not locate Cricsheet folder for mode " + mode);
+    }
+
+    private Path findModeFolder(String mode) {
         String folderName = switch (canonicalMode(mode)) {
             case MODE_IPL -> "ipl_json";
             case MODE_ODI -> "odis_json";
@@ -577,7 +606,7 @@ public class CricsheetParserService {
             }
         }
 
-        throw new IllegalStateException("Could not locate Cricsheet folder for mode " + mode);
+        return null;
     }
 
     private String canonicalMode(String mode) {

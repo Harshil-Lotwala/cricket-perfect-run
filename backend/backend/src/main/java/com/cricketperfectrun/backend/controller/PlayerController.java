@@ -12,7 +12,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/players")
-@CrossOrigin
 public class PlayerController {
 
     private final CricsheetParserService parserService;
