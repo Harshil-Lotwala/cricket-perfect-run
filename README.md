@@ -309,7 +309,7 @@ Supabase is used only for leaderboard entries that meet all eligibility rules an
 1. In Render, create a **Blueprint** and connect this GitHub repository.
 2. Select the repository's `main` branch. Render reads `render.yaml` from the repository root.
 3. Set `DATABASE_URL` to the private Supabase Session pooler URI.
-4. Set `CORS_ALLOWED_ORIGINS` when prompted. Initially use the Vercel production domain, for example `https://perfect-run.vercel.app`. Multiple values are comma-separated and preview domains may use `https://*.vercel.app`.
+4. Set `APP_CORS_ALLOWED_ORIGINS` when prompted. Initially use the Vercel production domain, for example `https://perfect-run.vercel.app`. Multiple values are comma-separated and preview domains may use `https://*.vercel.app`.
 4. Create the Blueprint. The API health endpoint is `/api/health` and the public API base is `https://<render-service>.onrender.com/api`.
 
 The Blueprint uses Render's free web-service plan and never requests a disk or payment. Free services sleep after inactivity, so the first request after a quiet period can take longer. Durable approved leaderboard entries live in Supabase instead of Render's temporary filesystem.
@@ -319,7 +319,7 @@ The Blueprint uses Render's free web-service plan and never requests a disk or p
 1. Import the same GitHub repository in Vercel.
 2. Set the project **Root Directory** to `frontend` and keep the detected Vite framework settings.
 3. Add `VITE_API_URL=https://<render-service>.onrender.com/api` to the Production environment.
-4. Deploy, then copy the final Vercel domain back into Render's `CORS_ALLOWED_ORIGINS` value.
+4. Deploy, then copy the final Vercel domain back into Render's `APP_CORS_ALLOWED_ORIGINS` value.
 
 Both providers then watch `main`: every successful push automatically rebuilds and publishes the affected service. Pull requests and non-production branches can create Vercel previews without replacing production. Do not commit database credentials, secrets, or a generated leaderboard file.
 
@@ -328,7 +328,7 @@ To validate the exact backend container locally:
 ```bash
 docker build -t perfect-run-api backend/backend
 docker run --rm -p 8080:8080 \
-  -e CORS_ALLOWED_ORIGINS=http://localhost:5173 \
+  -e APP_CORS_ALLOWED_ORIGINS=http://localhost:5173 \
   -e LEADERBOARD_FILE=/tmp/leaderboard.json \
   perfect-run-api
 ```
@@ -480,7 +480,7 @@ The only durable player-created record is an unbeaten Hard Mode run that the pla
 | `PORT` / `server.port` | Spring Boot | `8080` | Backend HTTP port; Render injects `PORT` |
 | `DATABASE_URL` | Spring Boot | empty | Production PostgreSQL URI; when present, approved leaderboard entries are stored durably in PostgreSQL |
 | `LEADERBOARD_FILE` / `leaderboard.file` | Spring Boot | `../../data/leaderboard.json` | Local-development fallback used only when `DATABASE_URL` is empty |
-| `CORS_ALLOWED_ORIGINS` | Spring Boot | local Vite origins | Comma-separated allowed frontend origin patterns |
+| `APP_CORS_ALLOWED_ORIGINS` | Spring Boot | local Vite origins | Comma-separated allowed frontend origin patterns |
 | `server.compression.*` | `application.properties` | enabled | Text/API response compression |
 | `VITE_API_URL` | frontend build environment | `/api` | API base URL embedded at build time |
 | Vite `server.port` | `vite.config.js` | `5173` | Local frontend port |
