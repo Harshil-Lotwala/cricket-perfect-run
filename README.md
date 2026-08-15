@@ -83,9 +83,9 @@ The global **Rules** dialog explains drafting, the keeper and captain requiremen
 - Vite 8
 - Tailwind CSS 4
 - Zustand persistence
-- Framer Motion
 - React Router
 - Lucide icons
+- Native Fetch API with connection retry and request timeouts
 
 ### Backend
 
@@ -97,6 +97,88 @@ The global **Rules** dialog explains drafting, the keeper and captain requiremen
 
 No database is required.
 
+## Architecture and request flow
+
+```text
+Browser (React + Zustand)
+        │
+        │  /api through the Vite development proxy
+        ▼
+Spring Boot controllers
+        │
+        ├── catalogue/player requests ──► indexed Cricsheet caches
+        ├── simulation requests ────────► seeded competition engine
+        └── approved leaderboard posts ─► server replay + JSON storage
+```
+
+The frontend is a client-rendered single-page application. Routes are loaded only when opened, so entering Draft does not download Results, Scorecard, or Leaderboard code in advance. During development, Vite forwards `/api` to Spring Boot. In production, serve both applications behind one origin or set `VITE_API_URL` to the backend URL at build time.
+
+The backend is stateless for ordinary runs. It reads local Cricsheet JSON, converts delivery-level records into player-season aggregates, builds searchable in-memory indexes, and caches those aggregates on disk. A simulation request contains everything needed to reproduce a run: XI, captain, keeper, format, opponent pool, difficulty, season cap, and seed.
+
+## Frontend routes and screens
+
+| Route | Screen | Responsibility |
+| --- | --- | --- |
+| `/` | Modes | Introduces the game and selects one of the four formats |
+| `/draft/{mode}` | Draft | Reveals squads, loads players, validates the XI, selects leaders, and starts simulation |
+| `/result` | Results | Shows the verdict, awards, balance, matches, standings, swaps, sharing, and eligible upload form |
+| `/scorecard/{matchId}` | Scorecard | Shows toss, innings order, batting, bowling, and result for one match |
+| `/leaderboard/{mode}` | Leaderboard | Shows explicitly published, server-verified unbeaten Hard Mode runs |
+
+The global navigation provides Modes, Draft, Results, Leaderboard, and Rules. The responsive footer contains creator links and a back-to-top action while following the same sharp visual system as the game.
+
+## Draft state and validation
+
+The Zustand store owns the active run: mode, season cap, seed, opponent type, difficulty, reveal, rerolls, XI, captain, keeper, swaps, and current session result.
+
+- Catalogue metadata is retained between new runs to avoid repeat downloads.
+- Loaded squad payloads are disposable runtime data.
+- Full scorecards and simulation results are excluded from persistent browser storage.
+- Switching formats resets incompatible run state.
+- **New Game** creates a fresh seed, clears the XI/cache, and unlocks Hard Mode selection.
+- Duplicate players are rejected by name.
+- The eleventh slot is reserved for a wicketkeeper when the first ten contain none.
+- Player cards use real cricket country codes rather than treating international players as Indian.
+- IPL enforces four overseas players; international modes do not apply that franchise rule.
+
+## Data processing and ratings
+
+Cricsheet files are parsed at delivery level. For every player, team, season, and format the backend aggregates matches, wins, runs, balls faced, dismissals, wickets, legal balls bowled, runs conceded, catches, stumpings, and player-of-the-match awards.
+
+Batting average, strike rate, bowling average, and economy come from those counts. Rating inputs are format-specific and sample-adjusted: small samples regress toward a format baseline so one brief exceptional appearance cannot outrank sustained elite performance. Roles come from real batting/bowling workload. Keeper eligibility uses stumpings plus the keeper supplement. Leadership and keeping impact remain separate from the base rating and are applied when captain and wicketkeeper are selected.
+
+The backend writes a fingerprinted aggregate under `data/.perfect-run-cache/`. Warm starts read the compact cache instead of reparsing thousands of matches. Adding, removing, or replacing source files invalidates the fingerprint.
+
+## Competition and match engine
+
+Every run is deterministic for its complete input, not universally fixed. The same XI, leaders, settings, and seed reproduce the same run. A new game changes the seed; changing captain or keeper also changes the simulation identity.
+
+### Opponents
+
+Historical mode ranks eligible identities by strength, admits only one version of each identity, and uses the run seed to select an eligible season. Franchise renames share one identity. World Cup historical opponents come from the selected edition. Legacy XI mode builds stronger best-of-era squads from the same real data.
+
+### Toss and innings
+
+Every match has a seeded toss winner and bat/bowl decision. The user does not always bat first. Limited-over chases stop on the winning delivery. Tests use two innings per side, a shared time budget, declarations or unfinished innings, and possible draws.
+
+### Scorecard invariants
+
+- Overs derive from legal balls; `18.5` means 18 overs and 5 balls.
+- Batting balls and bowling allocations reconcile with innings length.
+- Only the bowler delivering an unfinished final over can have a partial over.
+- Consecutive overs are allocated to different bowlers.
+- T20 bowlers are capped at 4 overs, ODI bowlers at 10, and Test bowlers are unlimited.
+- Wickets, totals, chases, margins, innings order, and result text agree.
+- Knockout teams come from qualification positions, not a separate random list.
+
+## Results, swaps, and awards
+
+Results separate league-table seed from final tournament finish. Losing the final produces **Runner-up** even if the XI topped the league. Matches appear in competition order and link to full scorecards.
+
+The engine aggregates runs, wickets, and player-of-the-match awards for MVP, best batter, best bowler, and best all-rounder. Results also report batting, bowling, all-round depth, keeping, captain impact, keeper impact, XI identity, role mix, and overall rating.
+
+Every format grants two post-simulation swaps. A swap removes one player, consumes one swap, returns to Draft for one replacement, and clears the old result. Removing the captain or keeper requires that role to be chosen again. Champion presentation supports confetti, while reduced-motion users receive the same information without unnecessary animation.
+
 ## Repository structure
 
 ```text
@@ -105,20 +187,23 @@ cricket-perfect-run/
 │   ├── pom.xml
 │   └── src/main/
 │       ├── java/com/cricketperfectrun/backend/
-│       │   ├── controller/
-│       │   ├── dto/
-│       │   ├── model/
-│       │   └── service/
-│       └── resources/
+│       │   ├── config/          # web and request configuration
+│       │   ├── controller/      # HTTP API endpoints
+│       │   ├── dto/             # transport objects
+│       │   ├── model/           # domain and scorecard records
+│       │   └── service/         # parsing, ratings, simulation, leaderboard
+│       └── resources/           # properties and metadata supplements
+│   └── src/test/                # context and cricket-invariant tests
 ├── data/cricsheet/                 # local data; ignored by Git
 ├── frontend/
 │   ├── package.json
 │   └── src/
-│       ├── components/
-│       ├── data/
-│       ├── pages/
-│       ├── services/
-│       └── store/
+│       ├── components/          # shared navigation, footer, field, rules
+│       ├── data/                # four-mode UI configuration
+│       ├── pages/               # lazy-loaded route screens
+│       ├── services/            # native HTTP client
+│       ├── store/               # run state and persistence policy
+│       └── utils/               # cricket display helpers
 └── README.md
 ```
 
@@ -179,6 +264,31 @@ Open `http://localhost:5173`. If that port is occupied, Vite now stops with a cl
 
 The Vite development server proxies `/api` requests to port `8080`. Both processes must remain running.
 
+### Production build
+
+```bash
+cd frontend
+npm ci
+npm run build
+npm run preview
+```
+
+The optimized static application is written to `frontend/dist/`. For a separately hosted API:
+
+```bash
+VITE_API_URL=https://api.example.com/api npm run build
+```
+
+Build and run the Java 21 backend artifact with:
+
+```bash
+cd backend/backend
+./mvnw clean package
+java -jar target/backend-0.0.1-SNAPSHOT.jar
+```
+
+Deploy `dist/` to a static host and the JAR to a Java service. Route `/api` consistently and place `data/leaderboard.json` on durable storage if published leaderboard records must survive redeployments. The repository intentionally remains provider-neutral.
+
 ## Troubleshooting
 
 ### The frontend says it cannot reach the backend
@@ -197,7 +307,17 @@ Backend is running
 
 ### Vite says port 5173 is in use
 
-Use the new `Local` URL printed in the terminal. Do not keep opening the old port.
+Stop the older Vite process. `strictPort` deliberately prevents this app from silently moving to 5174.
+
+```bash
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+```
+
+For a backend port conflict:
+
+```bash
+lsof -nP -iTCP:8080 -sTCP:LISTEN
+```
 
 ### A result disappears after refreshing
 
@@ -238,6 +358,12 @@ Example simulation body:
 ```
 
 `team` contains the eleven player objects returned by the player endpoint.
+
+Catalogue and player endpoints send public one-hour cache headers because historical data is immutable during a running backend process. Simulation and publication endpoints are never browser-cached.
+
+### Player-facing and developer errors
+
+The UI uses recovery-focused messages such as retrying, revealing another squad, reviewing XI rules, or starting a new run. It never asks players to inspect frontend/backend terminals or exposes raw HTTP responses. Detailed errors remain available to developers in browser and Spring logs. The native client has a 120-second timeout and retries connection failures four times; it does not retry explicit HTTP validation/authorization failures.
 
 ## Simulation rules
 
@@ -285,10 +411,42 @@ Manual end-to-end checks should cover:
 
 ## Performance
 
-- Parsed Cricsheet results and derived metadata are cached in memory.
-- Backend responses use HTTP compression.
-- The frontend lazy-loads route bundles.
-- Disposable squad payloads and all simulation results are excluded from persisted browser state to protect privacy and avoid Safari storage failures.
+- Routes are lazy-loaded, so Draft, Results, Scorecard, and Leaderboard load only when visited.
+- The client uses native Fetch instead of shipping Axios.
+- The squad reveal uses a CSS transition instead of shipping Framer Motion.
+- Measured production build: Draft fell from **46.20 KB to 7.06 KB gzip** (about **85% smaller**) and the API client from **17.06 KB to 0.48 KB gzip** (about **97% smaller**).
+- Removing Axios and Framer Motion eliminated 41 packages and about 14 MB from the installed dependency tree.
+- Unused starter SVG assets were removed.
+- Browsers cache catalogue and player responses for one hour.
+- Spring compresses JSON, JavaScript, CSS, and text responses above 1 KB.
+- Parsed aggregates, team indexes, season catalogues, keeper/leadership data, and Legacy XIs are cached in memory.
+- Fingerprinted disk caches avoid repeated cold parsing after restarts; cold parsing processes matches in parallel.
+- Disposable squads and simulation results are excluded from persistent browser state to protect privacy and avoid Safari storage failures.
+
+## Privacy and storage
+
+Normal games are private and session-only. The application never automatically uploads or permanently saves every result. Browser persistence keeps enough catalogue/draft state to recover an interrupted draft but explicitly removes results, scorecards, loaded squad payloads, and runtime caches.
+
+The only durable player-created record is an unbeaten Hard Mode run that the player explicitly approves. The backend replays it before writing. The chosen display name and cricket XI are stored in `data/leaderboard.json`. This project has no accounts, passwords, payments, analytics trackers, or advertising cookies.
+
+## Configuration reference
+
+| Setting | Location | Default | Purpose |
+| --- | --- | --- | --- |
+| `server.port` | Spring Boot | `8080` | Backend HTTP port |
+| `leaderboard.file` | `application.properties` | `../../data/leaderboard.json` | Verified leaderboard storage |
+| `server.compression.*` | `application.properties` | enabled | Text/API response compression |
+| `VITE_API_URL` | frontend build environment | `/api` | API base URL embedded at build time |
+| Vite `server.port` | `vite.config.js` | `5173` | Local frontend port |
+| Vite `strictPort` | `vite.config.js` | `true` | Prevents accidental fallback to another port |
+
+## Known boundaries
+
+- This is a seeded game model informed by real historical performance, not a prediction service.
+- Cricsheet archives are required locally and are not redistributed here.
+- Leaderboard display names are public labels, not authenticated identities.
+- JSON leaderboard storage suits one backend instance; multi-instance hosting should use transactional shared storage.
+- Historical source coverage determines available seasons, squads, and players.
 
 ## License and data
 

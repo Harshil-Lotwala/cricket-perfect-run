@@ -71,7 +71,9 @@ function Result() {
       });
       setSubmission(response.data);
     } catch (error) {
-      setSubmitError(error.response?.data?.error || "Could not verify and post this run.");
+      setSubmitError(error.status === 400 || error.status === 403
+        ? "This run did not pass verification and was not published. Review the leaderboard rules and try a new Hard Mode run."
+        : "Publishing is temporarily unavailable. Nothing was saved—please try again shortly.");
     } finally {
       setIsSubmitting(false);
     }
@@ -155,7 +157,7 @@ function Result() {
           <div>
             <p className="eyebrow mb-1">HARD MODE LEADERBOARD</p>
             <h2 className="text-2xl font-black">{leaderboardEligible ? "Your unbeaten XI can enter the board" : "Unbeaten Hard Mode runs qualify"}</h2>
-            <p className="mt-1 text-sm text-slate-400">{leaderboardEligible ? "Upload is unlocked. The server will verify and replay this exact run." : "Keep playing in Hard Mode and finish with zero losses to unlock team upload."}</p>
+            <p className="mt-1 text-sm text-slate-400">{leaderboardEligible ? "Upload is unlocked. Perfect Run will verify and replay this exact run before publishing." : "Keep playing in Hard Mode and finish with zero losses to unlock team upload."}</p>
           </div>
           {leaderboardEligible && (!submission ? (
             <div className="mt-4 w-full max-w-md md:mt-0">

@@ -19,7 +19,7 @@ function Leaderboard() {
         if (!cancelled) setBoard({ mode: config.id, entries: response.data || [], error: "" });
       })
       .catch(() => {
-        if (!cancelled) setBoard({ mode: config.id, entries: [], error: "Could not load the leaderboard. Check the backend." });
+        if (!cancelled) setBoard({ mode: config.id, entries: [], error: "The leaderboard is unavailable right now. Please try again shortly." });
       });
     return () => { cancelled = true; };
   }, [config.id]);

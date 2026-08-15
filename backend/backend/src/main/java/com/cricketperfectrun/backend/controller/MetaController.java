@@ -1,8 +1,11 @@
 package com.cricketperfectrun.backend.controller;
 
 import com.cricketperfectrun.backend.service.CricsheetParserService;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -22,12 +25,16 @@ public class MetaController {
     }
 
     @GetMapping("/{mode}/teams-by-year")
-    public Map<Integer, List<String>> teamsByYear(@PathVariable String mode) {
-        return parserService.getTeamsByYear(mode);
+    public ResponseEntity<Map<Integer, List<String>>> teamsByYear(@PathVariable String mode) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(Duration.ofHours(1)).cachePublic())
+                .body(parserService.getTeamsByYear(mode));
     }
 
     @GetMapping("/{mode}/years")
-    public List<Integer> years(@PathVariable String mode) {
-        return parserService.getAvailableYears(mode);
+    public ResponseEntity<List<Integer>> years(@PathVariable String mode) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(Duration.ofHours(1)).cachePublic())
+                .body(parserService.getAvailableYears(mode));
     }
 }

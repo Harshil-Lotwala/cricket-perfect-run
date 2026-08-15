@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
 import { Plane, Shield, Loader2, Trophy, Info, RotateCcw, X, CalendarRange, Sparkles, ChevronRight, Lock } from "lucide-react";
 import api from "../services/api";
 import useGameStore from "../store/useGameStore";
@@ -49,7 +48,7 @@ function Draft() {
         store.setMeta(mode, teamsRes.data, years);
       } catch (e) {
         console.error("Failed to load catalogue", e);
-        store.setDraftError("Could not reach the cricket data service. Start the backend, then refresh this page.");
+        store.setDraftError("We couldn't load the season list right now. Please try again in a moment.");
       } finally {
         if (!cancelled) setIsLoadingMeta(false);
       }
@@ -145,7 +144,7 @@ function Draft() {
       store.loadSquadPlayers(res.data);
     } catch (e) {
       console.error("Failed to load squad", e);
-      store.setDraftError("Could not load this squad. Try rerolling or check the backend.");
+      store.setDraftError("This squad couldn't be loaded. Try again or reveal another squad.");
     } finally {
       setIsLoadingPlayers(false);
     }
@@ -175,10 +174,12 @@ function Draft() {
       navigate("/result");
     } catch (e) {
       console.error("Simulation failed", e);
-      const reason = e.status
-        ? `The backend returned HTTP ${e.status}${e.message ? `: ${e.message}` : "."}`
-        : "The browser could not send the request through the local frontend server.";
-      store.setDraftError(`Simulation failed: ${reason}`);
+      const reason = e.status === 400
+        ? "Review your XI, captain, wicketkeeper, and squad limits, then try again."
+        : e.status === 403
+          ? "This run could not be verified. Start a new game and draft the XI again."
+          : "The match engine is temporarily unavailable. Your XI is still here—please try again.";
+      store.setDraftError(`Simulation unavailable. ${reason}`);
     } finally {
       setIsSimulating(false);
     }
@@ -279,11 +280,9 @@ function Draft() {
                   </div>
                 )}
                 {/* Reveal card */}
-                <motion.div
+                <div
                   key={`${display.year}-${display.team}-${spinning}`}
-                  initial={{ opacity: 0.3, y: spinning ? -6 : 0 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="reveal-card rounded-none px-4 py-5 sm:px-5 sm:py-6 mb-3"
+                  className={`reveal-card rounded-none px-4 py-5 sm:px-5 sm:py-6 mb-3 transition-[opacity,transform] duration-200 ${spinning ? "opacity-60 -translate-y-1" : "opacity-100 translate-y-0"}`}
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0 text-left">
@@ -297,7 +296,7 @@ function Draft() {
                     </div>
                     <Sparkles className="shrink-0 text-lime-300" size={22} aria-hidden="true" />
                   </div>
-                </motion.div>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
                   <button onClick={loadSquad} disabled={isLoadingPlayers || isSquadLoaded || spinning || !currentTeam}
@@ -330,7 +329,7 @@ function Draft() {
                 {!isSquadLoaded ? (
                   <div className="bg-slate-800/60 rounded-none p-6 text-slate-300 text-sm text-center">
                     {isLoadingPlayers
-                      ? "Indexing Cricsheet data. The first squad after starting the backend can take a moment."
+                      ? "Preparing historical squad data. The first load can take a moment."
                       : spinning ? "Revealing squad…" : "Load the squad to reveal players, then draft one."}
                   </div>
                 ) : (
