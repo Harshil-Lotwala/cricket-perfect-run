@@ -287,32 +287,41 @@ cd backend/backend
 java -jar target/backend-0.0.1-SNAPSHOT.jar
 ```
 
-### Production deployment: Vercel + Render
+### Free production deployment: Vercel + Render + Supabase
 
 The repository is configured for continuous deployment from GitHub's `main` branch:
 
 - `frontend/vercel.json` configures the Vite SPA for Vercel, including client-side route fallback.
-- `render.yaml` defines the Render backend, health check, Docker runtime, and persistent leaderboard disk.
+- `render.yaml` defines the free Render backend, health check, Docker runtime, and required database URL.
 - `backend/backend/Dockerfile` creates a Java 21 multi-stage production image and runs it as an unprivileged user.
 - `backend/backend/src/main/resources/cricket-data/` contains compact generated player-season aggregates. The deployed API therefore does not need the 567 MB raw Cricsheet workspace or a cold parse at startup.
 
-#### 1. Deploy the backend on Render
+#### 1. Create the free leaderboard database
+
+1. Create a free Supabase project.
+2. Open **Connect**, select the **Session pooler** connection string, and copy its PostgreSQL URI.
+3. Keep that URI private. The backend creates the `perfect_run_leaderboard` table automatically on first boot.
+
+Supabase is used only for leaderboard entries that meet all eligibility rules and that the player explicitly approves for publishing. Ordinary simulations and losing runs are not persisted.
+
+#### 2. Deploy the backend on Render
 
 1. In Render, create a **Blueprint** and connect this GitHub repository.
 2. Select the repository's `main` branch. Render reads `render.yaml` from the repository root.
-3. Set `CORS_ALLOWED_ORIGINS` when prompted. Initially use the Vercel production domain, for example `https://perfect-run.vercel.app`. Multiple values are comma-separated and preview domains may use `https://*.vercel.app`.
+3. Set `DATABASE_URL` to the private Supabase Session pooler URI.
+4. Set `CORS_ALLOWED_ORIGINS` when prompted. Initially use the Vercel production domain, for example `https://perfect-run.vercel.app`. Multiple values are comma-separated and preview domains may use `https://*.vercel.app`.
 4. Create the Blueprint. The API health endpoint is `/api/health` and the public API base is `https://<render-service>.onrender.com/api`.
 
-The Blueprint uses a paid Starter service because Render's persistent disk is required for approved leaderboard entries. The disk is mounted at `/var/data`, and `LEADERBOARD_FILE` points to `/var/data/leaderboard.json`. Normal results remain session-only and are never written there.
+The Blueprint uses Render's free web-service plan and never requests a disk or payment. Free services sleep after inactivity, so the first request after a quiet period can take longer. Durable approved leaderboard entries live in Supabase instead of Render's temporary filesystem.
 
-#### 2. Deploy the frontend on Vercel
+#### 3. Deploy the frontend on Vercel
 
 1. Import the same GitHub repository in Vercel.
 2. Set the project **Root Directory** to `frontend` and keep the detected Vite framework settings.
 3. Add `VITE_API_URL=https://<render-service>.onrender.com/api` to the Production environment.
 4. Deploy, then copy the final Vercel domain back into Render's `CORS_ALLOWED_ORIGINS` value.
 
-Both providers then watch `main`: every successful push automatically rebuilds and publishes the affected service. Pull requests and non-production branches can create Vercel previews without replacing production. Do not commit secrets or a generated leaderboard file.
+Both providers then watch `main`: every successful push automatically rebuilds and publishes the affected service. Pull requests and non-production branches can create Vercel previews without replacing production. Do not commit database credentials, secrets, or a generated leaderboard file.
 
 To validate the exact backend container locally:
 
@@ -469,7 +478,8 @@ The only durable player-created record is an unbeaten Hard Mode run that the pla
 | Setting | Location | Default | Purpose |
 | --- | --- | --- | --- |
 | `PORT` / `server.port` | Spring Boot | `8080` | Backend HTTP port; Render injects `PORT` |
-| `LEADERBOARD_FILE` / `leaderboard.file` | Spring Boot | `../../data/leaderboard.json` | Verified leaderboard storage; production uses `/var/data/leaderboard.json` |
+| `DATABASE_URL` | Spring Boot | empty | Production PostgreSQL URI; when present, approved leaderboard entries are stored durably in PostgreSQL |
+| `LEADERBOARD_FILE` / `leaderboard.file` | Spring Boot | `../../data/leaderboard.json` | Local-development fallback used only when `DATABASE_URL` is empty |
 | `CORS_ALLOWED_ORIGINS` | Spring Boot | local Vite origins | Comma-separated allowed frontend origin patterns |
 | `server.compression.*` | `application.properties` | enabled | Text/API response compression |
 | `VITE_API_URL` | frontend build environment | `/api` | API base URL embedded at build time |

@@ -16,6 +16,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -36,6 +42,7 @@ public class LeaderboardService {
     private final CricsheetParserService parserService;
     private final PlayerFactory playerFactory;
     private final Path storagePath;
+    private final String databaseUrl;
     private final List<LeaderboardEntry> entries = new ArrayList<>();
 
     public LeaderboardService(
@@ -43,13 +50,15 @@ public class LeaderboardService {
             SimulationService simulationService,
             CricsheetParserService parserService,
             PlayerFactory playerFactory,
-            @Value("${leaderboard.file:../../data/leaderboard.json}") String storageFile
+            @Value("${leaderboard.file:../../data/leaderboard.json}") String storageFile,
+            @Value("${DATABASE_URL:}") String databaseUrl
     ) {
         this.objectMapper = objectMapper;
         this.simulationService = simulationService;
         this.parserService = parserService;
         this.playerFactory = playerFactory;
         this.storagePath = Path.of(storageFile).toAbsolutePath().normalize();
+        this.databaseUrl = databaseUrl == null ? "" : databaseUrl.trim();
         load();
     }
 
@@ -192,6 +201,10 @@ public class LeaderboardService {
     }
 
     private void load() {
+        if (!databaseUrl.isBlank()) {
+            loadFromDatabase();
+            return;
+        }
         if (!Files.isRegularFile(storagePath)) return;
         try {
             entries.addAll(objectMapper.readValue(storagePath.toFile(), new TypeReference<List<LeaderboardEntry>>() {}));
@@ -201,6 +214,10 @@ public class LeaderboardService {
     }
 
     private void persist() {
+        if (!databaseUrl.isBlank()) {
+            persistToDatabase();
+            return;
+        }
         try {
             Files.createDirectories(storagePath.getParent());
             Path temporaryFile = storagePath.resolveSibling(storagePath.getFileName() + ".tmp");
@@ -213,6 +230,66 @@ public class LeaderboardService {
             }
         } catch (IOException error) {
             throw new IllegalStateException("Could not save the leaderboard.", error);
+        }
+    }
+
+    private void loadFromDatabase() {
+        try (Connection connection = openDatabase()) {
+            initializeSchema(connection);
+            try (Statement statement = connection.createStatement();
+                 ResultSet result = statement.executeQuery(
+                         "SELECT payload FROM perfect_run_leaderboard ORDER BY submitted_at")) {
+                while (result.next()) {
+                    entries.add(objectMapper.readValue(result.getString("payload"), LeaderboardEntry.class));
+                }
+            }
+        } catch (SQLException | IOException error) {
+            throw new IllegalStateException("Could not load the leaderboard database.", error);
+        }
+    }
+
+    private void persistToDatabase() {
+        try (Connection connection = openDatabase()) {
+            connection.setAutoCommit(false);
+            initializeSchema(connection);
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate("DELETE FROM perfect_run_leaderboard");
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO perfect_run_leaderboard (id, mode, payload, submitted_at) VALUES (?, ?, ?, ?)")
+            ) {
+                for (LeaderboardEntry entry : entries) {
+                    statement.setString(1, entry.id());
+                    statement.setString(2, entry.mode());
+                    statement.setString(3, objectMapper.writeValueAsString(entry));
+                    statement.setObject(4, java.time.OffsetDateTime.ofInstant(entry.submittedAt(), java.time.ZoneOffset.UTC));
+                    statement.addBatch();
+                }
+                statement.executeBatch();
+            }
+            connection.commit();
+        } catch (SQLException | IOException error) {
+            throw new IllegalStateException("Could not save the leaderboard database.", error);
+        }
+    }
+
+    private Connection openDatabase() throws SQLException {
+        String jdbcUrl = databaseUrl.startsWith("jdbc:")
+                ? databaseUrl
+                : "jdbc:" + databaseUrl;
+        return DriverManager.getConnection(jdbcUrl);
+    }
+
+    private void initializeSchema(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS perfect_run_leaderboard (
+                        id VARCHAR(64) PRIMARY KEY,
+                        mode VARCHAR(32) NOT NULL,
+                        payload TEXT NOT NULL,
+                        submitted_at TIMESTAMP WITH TIME ZONE NOT NULL
+                    )
+                    """);
         }
     }
 }
