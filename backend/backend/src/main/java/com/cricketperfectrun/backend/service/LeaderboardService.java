@@ -16,6 +16,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -274,10 +277,29 @@ public class LeaderboardService {
     }
 
     private Connection openDatabase() throws SQLException {
-        String jdbcUrl = databaseUrl.startsWith("jdbc:")
-                ? databaseUrl
-                : "jdbc:" + databaseUrl;
-        return DriverManager.getConnection(jdbcUrl);
+        if (databaseUrl.startsWith("jdbc:")) {
+            return DriverManager.getConnection(databaseUrl);
+        }
+        URI uri;
+        try {
+            uri = URI.create(databaseUrl);
+        } catch (IllegalArgumentException error) {
+            throw new SQLException("DATABASE_URL is not a valid PostgreSQL URI.", error);
+        }
+        if (uri.getHost() == null || uri.getUserInfo() == null) {
+            throw new SQLException("DATABASE_URL must include a host and database credentials.");
+        }
+        String[] credentials = uri.getUserInfo().split(":", 2);
+        if (credentials.length != 2) {
+            throw new SQLException("DATABASE_URL must include a username and password.");
+        }
+        String user = URLDecoder.decode(credentials[0], StandardCharsets.UTF_8);
+        String password = URLDecoder.decode(credentials[1], StandardCharsets.UTF_8);
+        String jdbcUrl = "jdbc:postgresql://" + uri.getHost()
+                + (uri.getPort() > 0 ? ":" + uri.getPort() : "")
+                + (uri.getRawPath() == null || uri.getRawPath().isBlank() ? "/postgres" : uri.getRawPath())
+                + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+        return DriverManager.getConnection(jdbcUrl, user, password);
     }
 
     private void initializeSchema(Connection connection) throws SQLException {
