@@ -250,6 +250,7 @@ Example simulation body:
 - Franchise renames such as Delhi Daredevils/Delhi Capitals, Kings XI Punjab/Punjab Kings, and Royal Challengers Bangalore/Bengaluru share one identity.
 - Knockout opponents come from qualified league positions, never from a separate random pool.
 - Test matches use four innings, draws, declarations/unfinished innings, and ball-correct over notation.
+- Bowling cards are allocated over by over: figures reconcile exactly to the innings, only the active final bowler can have a partial over, and T20/ODI bowler limits are enforced.
 
 ## Validation
 

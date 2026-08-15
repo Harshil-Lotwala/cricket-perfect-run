@@ -517,7 +517,7 @@ public class SimulationService {
 
         List<BattingLine> battingLines = distributeBatting(config, order, totalRuns, wicketsLost,
                 inningsBalls, rng, agg, aggregate);
-        List<BowlingLine> bowlingLines = distributeBowling(bowlingOpponents, wicketsLost,
+        List<BowlingLine> bowlingLines = distributeBowling(config, bowlingOpponents, wicketsLost,
                 totalRuns, inningsBalls, rng);
 
         return new InningsCard(teamName, totalRuns, wicketsLost, cricketOvers(inningsBalls), battingLines, bowlingLines);
@@ -595,7 +595,8 @@ public class SimulationService {
     }
 
     private List<BowlingLine> distributeBowling(
-            List<SquadMember> bowlers, int wicketsToTake, int runsConceded, int inningsBalls, Random rng
+            ModeConfig config, List<SquadMember> bowlers, int wicketsToTake,
+            int runsConceded, int inningsBalls, Random rng
     ) {
         List<SquadMember> order = new ArrayList<>(bowlers);
         order.sort(Comparator.comparingDouble(SquadMember::bowlingScore).reversed());
@@ -612,27 +613,105 @@ public class SimulationService {
             sum += weights[i];
         }
 
-        List<BowlingLine> lines = new ArrayList<>();
-        int wicketsAllocated = 0;
-        int runsAllocated = 0;
-        int ballsAllocated = 0;
+        int[] ballsByBowler = allocateBowlingBalls(config, inningsBalls, weights, rng);
+        int[] wicketsByBowler = allocateExact(wicketsToTake, weights);
+        double[] runWeights = new double[used];
         for (int i = 0; i < used; i++) {
-            int wkts = sum == 0 ? 0 : (int) Math.round(wicketsToTake * weights[i] / sum);
-            int runs = (int) Math.round(runsConceded * (1.0 / used) * (0.7 + rng.nextDouble() * 0.6));
-            if (i == used - 1) {
-                wkts = Math.max(0, wicketsToTake - wicketsAllocated);
-                runs = Math.max(0, runsConceded - runsAllocated);
-            }
-            int balls = i == used - 1
-                    ? inningsBalls - ballsAllocated
-                    : inningsBalls / used;
-            wkts = Math.min(wkts, 10);
-            wicketsAllocated += wkts;
-            runsAllocated += runs;
-            ballsAllocated += balls;
-            lines.add(new BowlingLine(order.get(i).name(), cricketOvers(balls), runs, wkts));
+            // Better bowlers tend to concede fewer runs per ball, while still allowing match variance.
+            runWeights[i] = ballsByBowler[i] * (1.35 - Math.min(0.9, order.get(i).bowlingScore()))
+                    * (0.8 + rng.nextDouble() * 0.4);
+        }
+        int[] runsByBowler = allocateExact(runsConceded, runWeights);
+
+        List<BowlingLine> lines = new ArrayList<>();
+        for (int i = 0; i < used; i++) {
+            lines.add(new BowlingLine(order.get(i).name(), cricketOvers(ballsByBowler[i]),
+                    runsByBowler[i], wicketsByBowler[i]));
         }
         return lines;
+    }
+
+    /**
+     * Allocates the innings over by over. This guarantees that every bowler except, at most, the
+     * bowler delivering the unfinished final over has a whole-over figure. T20/ODI spell limits
+     * are also enforced (4 and 10 overs respectively); Tests have no per-bowler limit.
+     */
+    int[] allocateBowlingBalls(ModeConfig config, int inningsBalls, double[] weights, Random rng) {
+        int used = weights.length;
+        int[] allocation = new int[used];
+        int completedOvers = inningsBalls / 6;
+        int finalBalls = inningsBalls % 6;
+        int maxOvers = "TEST".equals(config.format()) ? Integer.MAX_VALUE : config.oversPerInnings() / 5;
+        int previous = -1;
+
+        for (int over = 0; over < completedOvers; over++) {
+            int selected = weightedEligibleBowler(weights, allocation, maxOvers, previous, rng);
+            allocation[selected] += 6;
+            previous = selected;
+        }
+
+        if (finalBalls > 0) {
+            int selected = weightedEligibleBowler(weights, allocation, maxOvers, previous, rng);
+            allocation[selected] += finalBalls;
+        }
+        return allocation;
+    }
+
+    private int weightedEligibleBowler(
+            double[] weights, int[] allocation, int maxOvers, int previous, Random rng
+    ) {
+        double total = 0;
+        for (int i = 0; i < weights.length; i++) {
+            if (i != previous && allocation[i] / 6 < maxOvers) total += Math.max(0.01, weights[i]);
+        }
+        // A one-bowler attack is not expected, but this fallback keeps the allocator total-safe.
+        if (total == 0) {
+            for (int i = 0; i < weights.length; i++) {
+                if (allocation[i] / 6 < maxOvers) total += Math.max(0.01, weights[i]);
+            }
+            previous = -1;
+        }
+
+        double pick = rng.nextDouble() * total;
+        for (int i = 0; i < weights.length; i++) {
+            if (i == previous || allocation[i] / 6 >= maxOvers) continue;
+            pick -= Math.max(0.01, weights[i]);
+            if (pick <= 0) return i;
+        }
+        for (int i = 0; i < weights.length; i++) {
+            if (i != previous && allocation[i] / 6 < maxOvers) return i;
+        }
+        throw new IllegalStateException("No legal bowler available for the next over");
+    }
+
+    private int[] allocateExact(int total, double[] weights) {
+        int[] allocation = new int[weights.length];
+        double weightTotal = 0;
+        for (double weight : weights) weightTotal += Math.max(0, weight);
+        if (total <= 0 || weights.length == 0) return allocation;
+        if (weightTotal == 0) {
+            allocation[0] = total;
+            return allocation;
+        }
+
+        double[] remainders = new double[weights.length];
+        int allocated = 0;
+        for (int i = 0; i < weights.length; i++) {
+            double exact = total * Math.max(0, weights[i]) / weightTotal;
+            allocation[i] = (int) Math.floor(exact);
+            remainders[i] = exact - allocation[i];
+            allocated += allocation[i];
+        }
+        while (allocated < total) {
+            int next = 0;
+            for (int i = 1; i < remainders.length; i++) {
+                if (remainders[i] > remainders[next]) next = i;
+            }
+            allocation[next]++;
+            remainders[next] = -1;
+            allocated++;
+        }
+        return allocation;
     }
 
     private double cricketOvers(int balls) {
