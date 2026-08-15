@@ -12,7 +12,7 @@ const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <div id="top" className="min-h-screen flex flex-col">
         <Navbar />
         <main className="flex-1">

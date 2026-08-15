@@ -154,21 +154,11 @@ function Draft() {
     if (!canSimulate || isSimulating) return;
     try {
       setIsSimulating(true);
-      const response = await fetch(`/api/play/${gameMode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const response = await api.post(`/play/${gameMode}`, {
           team: selectedTeam, captainId: selectedCaptainId, keeperId: selectedKeeperId,
           opponentType, hardMode, seed: runSeed, maxSeason: seasonCap,
-        }),
       });
-      if (!response.ok) {
-        const detail = await response.text();
-        const requestError = new Error(detail || `HTTP ${response.status}`);
-        requestError.status = response.status;
-        throw requestError;
-      }
-      const result = await response.json();
+      const result = response.data;
       // Results intentionally stay in memory for this session and are never persisted automatically.
       store.setSimulationResult(result);
       navigate("/result");
