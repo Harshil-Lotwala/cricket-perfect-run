@@ -9,7 +9,7 @@ function Scorecard() {
   if (!match) {
     return (
       <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center">
+        <div className="bg-slate-900 border border-slate-800 rounded-none p-8 text-center">
           <h1 className="text-3xl font-black mb-3">Scorecard not found</h1>
           <Link to="/result" className="text-blue-400">
             Back to result
@@ -27,23 +27,27 @@ function Scorecard() {
         </Link>
         <p className="text-blue-400 font-semibold mt-4 mb-1">{match.stage}</p>
         <h1 className="text-4xl font-black mb-1">Your XI vs {match.opponentLabel}</h1>
-        <p className={`text-lg font-bold mb-1 ${match.won ? "text-green-400" : "text-red-400"}`}>
+        <p className={`text-lg font-bold mb-1 ${match.drawn ? "text-yellow-300" : match.won ? "text-green-400" : "text-red-400"}`}>
           {match.margin}
         </p>
-        <p className="text-slate-400 mb-8">Player of the Match: {match.playerOfMatch}</p>
+        <div className="mb-8 space-y-1 text-slate-400">
+          {match.tossWinner && <p>Toss: <span className="text-slate-200">{match.tossWinner} won and chose to {match.tossDecision}</span></p>}
+          <p>Player of the Match: <span className="text-slate-200">{match.playerOfMatch}</span></p>
+        </div>
 
-        <Innings card={match.teamInnings} />
-        <Innings card={match.opponentInnings} />
+        {(match.innings?.length ? match.innings : [match.teamInnings, match.opponentInnings]).map((card, index) => (
+          <Innings key={`${card.team}-${index}`} card={card} number={match.innings?.length > 2 ? Math.floor(index / 2) + 1 : null} />
+        ))}
       </div>
     </main>
   );
 }
 
-function Innings({ card }) {
+function Innings({ card, number }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 mb-8">
+    <div className="bg-slate-900 border border-slate-800 rounded-none p-6 mb-8">
       <div className="flex items-baseline justify-between mb-4">
-        <h2 className="text-2xl font-bold">{card.team}</h2>
+        <h2 className="text-2xl font-bold">{card.team}{number ? ` · ${number}${number === 1 ? "st" : "nd"} innings` : ""}</h2>
         <p className="text-3xl font-black">
           {card.runs}/{card.wickets}{" "}
           <span className="text-base text-slate-400 font-normal">({card.overs} ov)</span>
@@ -51,7 +55,7 @@ function Innings({ card }) {
       </div>
 
       <h3 className="text-slate-400 text-sm font-semibold mb-2">BATTING</h3>
-      <div className="overflow-hidden rounded-2xl border border-slate-800 mb-5">
+      <div className="overflow-hidden rounded-none border border-slate-800 mb-5">
         <div className="grid grid-cols-[2fr_1fr_1fr_1fr] bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2">
           <span>Batter</span>
           <span className="text-center">R</span>
@@ -81,7 +85,7 @@ function Innings({ card }) {
       </div>
 
       <h3 className="text-slate-400 text-sm font-semibold mb-2">BOWLING</h3>
-      <div className="overflow-hidden rounded-2xl border border-slate-800">
+      <div className="overflow-hidden rounded-none border border-slate-800">
         <div className="grid grid-cols-[2fr_1fr_1fr_1fr] bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2">
           <span>Bowler</span>
           <span className="text-center">O</span>

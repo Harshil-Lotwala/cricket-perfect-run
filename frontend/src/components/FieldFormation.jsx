@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Plane, Crown, Shield } from "lucide-react";
 
 // Balanced cricket formation: 3 top order, 2 all-rounders, 2 finishers,
@@ -54,8 +55,10 @@ function assign(team, keeperId) {
   result.top3 = take((p) => p.role === "BAT" || p.role === "WK") || null;
   result.fin1 = take(() => true) || null;
   result.fin2 = take(() => true) || null;
-  // Fill any still-empty slot with whoever is left.
+  // Fill any still-empty outfield slot with whoever is left. The keeper position is structural:
+  // it must remain empty until an eligible wicketkeeper has actually been drafted.
   for (const s of SLOTS) {
+    if (s.id === "wk") continue;
     if (!result[s.id]) result[s.id] = take(() => true) || null;
   }
   return result;
@@ -66,7 +69,7 @@ function FieldFormation({ team, captainId, keeperId }) {
 
   return (
     <div
-      className="relative w-full rounded-3xl overflow-hidden border border-emerald-900/60"
+      className="relative w-full rounded-none overflow-hidden border border-emerald-900/60"
       style={{
         aspectRatio: "4 / 5",
         background:
@@ -75,7 +78,7 @@ function FieldFormation({ team, captainId, keeperId }) {
     >
       {/* pitch */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 bg-amber-200/20 border border-amber-100/20 rounded"
+        className="absolute left-1/2 -translate-x-1/2 bg-amber-200/20 border border-amber-100/20 rounded-none"
         style={{ top: "30%", height: "44%", width: "9%" }}
       />
       {/* 30-yard circle */}
@@ -114,4 +117,4 @@ function FieldFormation({ team, captainId, keeperId }) {
   );
 }
 
-export default FieldFormation;
+export default memo(FieldFormation);

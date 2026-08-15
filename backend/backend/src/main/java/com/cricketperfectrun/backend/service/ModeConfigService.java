@@ -11,7 +11,7 @@ import java.util.Locale;
  *   <li>IPL: 14 league + 2 knockouts = 16-0 (the 16-0 reference)</li>
  *   <li>ODI World Cup: 9 league + 2 knockouts = 11-0</li>
  *   <li>T20 World Cup: 6 group/Super 8 + 2 knockouts = 8-0</li>
- *   <li>WTC: 13 tests + 1 final = 14-0</li>
+ *   <li>WTC: 9 unique championship nations + 1 final = 10-0</li>
  * </ul>
  */
 @Service
@@ -36,7 +36,7 @@ public class ModeConfigService {
         return switch (canonical) {
             case "odi-world-cup" -> new ModeConfig(canonical, "ODI", 9, 2, 4, 50, 270);
             case "t20-world-cup" -> new ModeConfig(canonical, "T20", 6, 2, 4, 20, 160);
-            case "wtc" -> new ModeConfig(canonical, "TEST", 13, 1, 2, 90, 320);
+            case "wtc" -> new ModeConfig(canonical, "TEST", 9, 1, 2, 90, 320);
             default -> new ModeConfig("ipl", "T20", 14, 2, 4, 20, 165);
         };
     }

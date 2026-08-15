@@ -6,7 +6,7 @@ import com.cricketperfectrun.backend.service.SimulationService;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/simulate")
+@RequestMapping("/api")
 @CrossOrigin
 public class SimulationController {
 
@@ -16,7 +16,7 @@ public class SimulationController {
         this.simulationService = simulationService;
     }
 
-    @PostMapping("/{mode}")
+    @PostMapping({"/simulate/{mode}", "/play/{mode}"})
     public SeasonResult simulate(@PathVariable String mode, @RequestBody SimulationRequest request) {
         request.setMode(mode);
         return simulationService.simulate(request);

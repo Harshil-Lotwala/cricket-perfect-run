@@ -76,27 +76,85 @@ public class RatingService {
 
     /** 0..1 batting quality. */
     public double battingScore(PlayerSeasonStats s) {
-        double avg = s.dismissals() > 0 ? s.runs() / (double) s.dismissals()
-                : (s.ballsFaced() > 0 ? s.runs() : 0);
-        double sr = s.ballsFaced() > 0 ? s.runs() * 100.0 / s.ballsFaced() : 0;
+        FormatBenchmarks b = benchmarks(s.mode());
+        double rawAvg = s.dismissals() > 0 ? s.runs() / (double) s.dismissals() : b.battingAverage();
+        double rawSr = s.ballsFaced() > 0 ? s.runs() * 100.0 / s.ballsFaced() : b.strikeRate();
 
-        double avgComponent = clamp01(avg / 45.0);
-        double srComponent = clamp01((sr - 80.0) / 80.0);
-        double volume = clamp01(s.runs() / 600.0);
+        // Regress short samples toward a format baseline. This prevents a player with one or two
+        // innings from receiving an elite rating while preserving genuinely sustained output.
+        double avg = shrink(rawAvg, b.battingAverage(), s.dismissals(), b.battingDismissals());
+        double sr = shrink(rawSr, b.strikeRate(), s.ballsFaced(), b.battingBalls());
+        double avgComponent = quality(avg, b.battingAverage() * 0.45, b.eliteBattingAverage());
+        double srComponent = quality(sr, b.strikeRate() * 0.70, b.eliteStrikeRate());
+        double volume = clamp01(s.runs() / b.eliteRuns());
+        double experience = clamp01(s.matches() / 8.0);
 
-        return clamp01(0.4 * avgComponent + 0.4 * srComponent + 0.2 * volume);
+        return clamp01((0.48 * avgComponent + 0.27 * srComponent + 0.25 * volume)
+                * (0.78 + 0.22 * experience));
     }
 
     /** 0..1 bowling quality. */
     public double bowlingScore(PlayerSeasonStats s) {
-        double econ = s.ballsBowled() > 0 ? s.runsConceded() * 6.0 / s.ballsBowled() : 12.0;
-        double bowlAvg = s.wickets() > 0 ? s.runsConceded() / (double) s.wickets() : 40.0;
+        FormatBenchmarks b = benchmarks(s.mode());
+        double rawEcon = s.ballsBowled() > 0
+                ? s.runsConceded() * 6.0 / s.ballsBowled() : b.economy();
+        double rawAvg = s.wickets() > 0
+                ? s.runsConceded() / (double) s.wickets() : b.bowlingAverage();
+        double econ = shrink(rawEcon, b.economy(), s.ballsBowled(), b.bowlingBalls());
+        double avg = shrink(rawAvg, b.bowlingAverage(), s.wickets(), b.bowlingWickets());
 
-        double econComponent = clamp01((12.0 - econ) / 7.0);
-        double wktComponent = clamp01(s.wickets() / 25.0);
-        double avgComponent = clamp01((35.0 - bowlAvg) / 25.0);
+        double econComponent = inverseQuality(econ, b.eliteEconomy(), b.poorEconomy());
+        double avgComponent = inverseQuality(avg, b.eliteBowlingAverage(), b.bowlingAverage() * 1.65);
+        double wickets = clamp01(s.wickets() / b.eliteWickets());
+        double experience = clamp01(s.matches() / 8.0);
 
-        return clamp01(0.4 * econComponent + 0.4 * wktComponent + 0.2 * avgComponent);
+        return clamp01((0.34 * econComponent + 0.36 * avgComponent + 0.30 * wickets)
+                * (0.78 + 0.22 * experience));
+    }
+
+    private FormatBenchmarks benchmarks(String mode) {
+        return switch (mode) {
+            case "wtc" -> new FormatBenchmarks(32, 52, 55, 72, 650, 10, 400,
+                    31, 20, 3.15, 2.35, 4.6, 32);
+            case "odi-world-cup" -> new FormatBenchmarks(30, 42, 82, 115, 500, 8, 260,
+                    32, 21, 5.25, 3.9, 7.2, 20);
+            default -> new FormatBenchmarks(24, 38, 125, 165, 420, 7, 180,
+                    28, 18, 8.0, 5.8, 10.5, 18);
+        };
+    }
+
+    private double shrink(double observed, double baseline, int sample, double priorSample) {
+        return (observed * sample + baseline * priorSample) / Math.max(1.0, sample + priorSample);
+    }
+
+    private double quality(double value, double floor, double elite) {
+        return clamp01((value - floor) / (elite - floor));
+    }
+
+    private double inverseQuality(double value, double elite, double poor) {
+        return clamp01((poor - value) / (poor - elite));
+    }
+
+    private record FormatBenchmarks(
+            double battingAverage, double eliteBattingAverage,
+            double strikeRate, double eliteStrikeRate, double eliteRuns,
+            double battingDismissals, double battingBalls,
+            double bowlingAverage, double eliteBowlingAverage,
+            double economy, double eliteEconomy, double poorEconomy,
+            double bowlingBalls, double bowlingWickets, double eliteWickets
+    ) {
+        private FormatBenchmarks(
+                double battingAverage, double eliteBattingAverage,
+                double strikeRate, double eliteStrikeRate, double eliteRuns,
+                double battingDismissals, double battingBalls,
+                double bowlingAverage, double eliteBowlingAverage,
+                double economy, double eliteEconomy, double poorEconomy,
+                double eliteWickets
+        ) {
+            this(battingAverage, eliteBattingAverage, strikeRate, eliteStrikeRate, eliteRuns,
+                    battingDismissals, battingBalls, bowlingAverage, eliteBowlingAverage,
+                    economy, eliteEconomy, poorEconomy, 240, 8, eliteWickets);
+        }
     }
 
     private double clamp01(double v) {

@@ -54,10 +54,14 @@ public final class SimulationModels {
             String opponentName,
             String opponentLabel,
             boolean won,
+            boolean drawn,
             String margin,
+            String tossWinner,
+            String tossDecision,
             String playerOfMatch,
             String topScorer,
             String bestBowler,
+            List<InningsCard> innings,
             InningsCard teamInnings,
             InningsCard opponentInnings
     ) {}
@@ -66,6 +70,7 @@ public final class SimulationModels {
             String team,
             int played,
             int won,
+            int drawn,
             int lost,
             int points,
             double netRunRate
@@ -92,6 +97,7 @@ public final class SimulationModels {
             boolean champion,
             boolean perfect,
             int wins,
+            int draws,
             int losses,
             int perfectTarget,
             String summary,

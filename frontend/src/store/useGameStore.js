@@ -24,11 +24,13 @@ const freshRun = (mode) => ({
 
   opponentType: "historical",
   hardMode: false,
+  seasonCap: null, // latest season allowed for reveals/opponents (null = no cap)
 
   selectedTeam: [],
   selectedCaptainId: null,
   selectedKeeperId: null,
   simulationResult: null,
+  swapsLeft: 2,
 
   teamRerollsLeft: GAME_MODES[mode]?.rerollTeam ?? 2,
   yearRerollsLeft: GAME_MODES[mode]?.rerollYear ?? 2,
@@ -53,6 +55,10 @@ const useGameStore = create(
         set((state) => ({
           teamsByYearByMode: { ...state.teamsByYearByMode, [mode]: teamsByYear },
           yearsByMode: { ...state.yearsByMode, [mode]: years },
+          seasonCap:
+            state.gameMode === mode && !years.includes(state.seasonCap)
+              ? years.at(-1) ?? null
+              : state.seasonCap,
         })),
 
       hasMeta: (mode) => Boolean(get().yearsByMode[mode]?.length),
@@ -67,7 +73,8 @@ const useGameStore = create(
       // Pick a random (year, team) from the fetched catalogue for the current mode.
       rollReveal: () =>
         set((state) => {
-          const years = state.yearsByMode[state.gameMode] || [];
+          const all = state.yearsByMode[state.gameMode] || [];
+          const years = state.seasonCap ? all.filter((y) => y <= state.seasonCap) : all;
           if (years.length === 0) return state;
           const year = randomItem(years);
           const teams = state.teamsByYearByMode[state.gameMode]?.[year] || [];
@@ -98,7 +105,8 @@ const useGameStore = create(
       rerollYear: () =>
         set((state) => {
           if (state.yearRerollsLeft <= 0) return state;
-          const years = state.yearsByMode[state.gameMode] || [];
+          const all = state.yearsByMode[state.gameMode] || [];
+          const years = state.seasonCap ? all.filter((y) => y <= state.seasonCap) : all;
           const yearsForTeam = years.filter((y) =>
             (state.teamsByYearByMode[state.gameMode]?.[y] || []).includes(state.currentTeam)
           );
@@ -136,12 +144,22 @@ const useGameStore = create(
       draftPlayer: (player) =>
         set((state) => {
           if (!player) return state;
-          if (state.selectedTeam.length >= SQUAD_SIZE) return state;
+          const config = GAME_MODES[state.gameMode];
+          const squadSize = config?.squadSize ?? SQUAD_SIZE;
+          const minKeepers = config?.minKeepers ?? 1;
+          if (state.selectedTeam.length >= squadSize) return state;
           if (state.selectedTeam.some((p) => p.name === player.name)) return state;
+
+          const keeperCount = state.selectedTeam.filter((p) => p.keeperEligible).length;
+          const finalSlotNeedsKeeper =
+            state.selectedTeam.length === squadSize - 1 && keeperCount < minKeepers;
+          if (finalSlotNeedsKeeper && !player.keeperEligible) {
+            return { draftError: "Final pick must be a wicketkeeper." };
+          }
 
           const nextTeam = [...state.selectedTeam, player];
 
-          if (nextTeam.length >= SQUAD_SIZE) {
+          if (nextTeam.length >= squadSize) {
             return {
               selectedTeam: nextTeam,
               currentPlayers: [],
@@ -153,7 +171,8 @@ const useGameStore = create(
           }
 
           // Roll the next reveal immediately.
-          const years = state.yearsByMode[state.gameMode] || [];
+          const all = state.yearsByMode[state.gameMode] || [];
+          const years = state.seasonCap ? all.filter((y) => y <= state.seasonCap) : all;
           const year = years.length ? randomItem(years) : null;
           const teams = year ? state.teamsByYearByMode[state.gameMode]?.[year] || [] : [];
           return {
@@ -163,6 +182,29 @@ const useGameStore = create(
             currentPlayers: [],
             isSquadLoaded: false,
             draftError: "",
+          };
+        }),
+
+      // Recovery for persisted/older runs that reached XI without a keeper. Remove only the most
+      // recent pick, preserve the other ten, and reveal another squad within the selected era.
+      undoLastPick: () =>
+        set((state) => {
+          if (state.selectedTeam.length === 0) return state;
+          const removed = state.selectedTeam.at(-1);
+          const selectedTeam = state.selectedTeam.slice(0, -1);
+          const all = state.yearsByMode[state.gameMode] || [];
+          const years = state.seasonCap ? all.filter((y) => y <= state.seasonCap) : all;
+          const year = years.length ? randomItem(years) : null;
+          const teams = year ? state.teamsByYearByMode[state.gameMode]?.[year] || [] : [];
+          return {
+            selectedTeam,
+            selectedCaptainId: state.selectedCaptainId === removed.id ? null : state.selectedCaptainId,
+            selectedKeeperId: state.selectedKeeperId === removed.id ? null : state.selectedKeeperId,
+            currentYear: year,
+            currentTeam: teams.length ? randomItem(teams) : null,
+            currentPlayers: [],
+            isSquadLoaded: false,
+            draftError: "Final slot reserved for a wicketkeeper. Load squads until you find a player marked Keeper.",
           };
         }),
 
@@ -180,9 +222,61 @@ const useGameStore = create(
         }),
 
       setOpponentType: (opponentType) => set({ opponentType }),
-      toggleHardMode: () => set((state) => ({ hardMode: !state.hardMode })),
+      toggleHardMode: () =>
+        set((state) => {
+          if (state.selectedTeam.length > 0) {
+            return { draftError: "Hard Mode is locked after the first draft pick." };
+          }
+          return { hardMode: !state.hardMode, draftError: "" };
+        }),
+
+      // Cap the latest usable season. If the current (un-drafted) reveal is now out of range,
+      // roll a fresh reveal within the cap.
+      setSeasonCap: (year) =>
+        set((state) => {
+          const cap = Number(year) || null;
+          const next = { seasonCap: cap };
+          if (!state.isSquadLoaded && cap && state.currentYear && state.currentYear > cap) {
+            const all = state.yearsByMode[state.gameMode] || [];
+            const years = all.filter((y) => y <= cap);
+            if (years.length) {
+              const y = randomItem(years);
+              const teams = state.teamsByYearByMode[state.gameMode]?.[y] || [];
+              next.currentYear = y;
+              next.currentTeam = teams.length ? randomItem(teams) : null;
+              next.currentPlayers = [];
+              next.isSquadLoaded = false;
+            }
+          }
+          return next;
+        }),
 
       setSimulationResult: (result) => set({ simulationResult: result }),
+
+      startSwap: (playerId) =>
+        set((state) => {
+          const remainingSwaps = Number.isInteger(state.swapsLeft) ? state.swapsLeft : 2;
+          if (!state.simulationResult || remainingSwaps <= 0) return state;
+          const removed = state.selectedTeam.find((player) => player.id === playerId);
+          if (!removed) return state;
+          const selectedTeam = state.selectedTeam.filter((player) => player.id !== playerId);
+          const all = state.yearsByMode[state.gameMode] || [];
+          const years = state.seasonCap ? all.filter((year) => year <= state.seasonCap) : all;
+          const year = years.length ? randomItem(years) : null;
+          const teams = year ? state.teamsByYearByMode[state.gameMode]?.[year] || [] : [];
+          return {
+            selectedTeam,
+            selectedCaptainId: state.selectedCaptainId === playerId ? null : state.selectedCaptainId,
+            selectedKeeperId: state.selectedKeeperId === playerId ? null : state.selectedKeeperId,
+            simulationResult: null,
+            swapsLeft: remainingSwaps - 1,
+            currentYear: year,
+            currentTeam: teams.length ? randomItem(teams) : null,
+            currentPlayers: [],
+            isSquadLoaded: false,
+            draftError: `${removed.name} removed. Draft one replacement to complete your XI.`,
+          };
+        }),
 
       getMatchById: (matchId) =>
         get().simulationResult?.matches?.find((m) => m.id === matchId) || null,
@@ -200,6 +294,23 @@ const useGameStore = create(
     }),
     {
       name: "cricket-perfect-run",
+      version: 2,
+      migrate: (persistedState) => ({
+        ...persistedState,
+        // Results are deliberately session-only. Clear results written by older app versions.
+        simulationResult: null,
+        swapsLeft: Number.isInteger(persistedState?.swapsLeft) ? persistedState.swapsLeft : 2,
+      }),
+      // Loaded squad payloads are disposable API cache. Persisting every reveal alongside full
+      // scorecards can exceed Safari's localStorage quota. Results are also private/session-only
+      // unless the player explicitly publishes an eligible unbeaten Hard Mode XI.
+      partialize: (state) => ({
+        ...state,
+        simulationResult: null,
+        squadCache: {},
+        currentPlayers: [],
+        isSquadLoaded: false,
+      }),
     }
   )
 );

@@ -1,21 +1,33 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Navbar from "./components/Navbar";
-import Home from "./pages/Home";
-import Draft from "./pages/Draft";
-import Result from "./pages/Result";
-import Scorecard from "./pages/Scorecard";
+import Footer from "./components/Footer";
 import "./App.css";
+
+const Home = lazy(() => import("./pages/Home"));
+const Draft = lazy(() => import("./pages/Draft"));
+const Result = lazy(() => import("./pages/Result"));
+const Scorecard = lazy(() => import("./pages/Scorecard"));
+const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 
 function App() {
   return (
     <BrowserRouter>
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/draft/:mode" element={<Draft />} />
-        <Route path="/result" element={<Result />} />
-        <Route path="/scorecard/:matchId" element={<Scorecard />} />
-      </Routes>
+      <div id="top" className="min-h-screen flex flex-col">
+        <Navbar />
+        <main className="flex-1">
+          <Suspense fallback={<div className="min-h-[60vh] grid place-items-center text-lime-300 font-black">LOADING RUN…</div>}>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/draft/:mode" element={<Draft />} />
+              <Route path="/result" element={<Result />} />
+              <Route path="/scorecard/:matchId" element={<Scorecard />} />
+              <Route path="/leaderboard/:mode?" element={<Leaderboard />} />
+            </Routes>
+          </Suspense>
+        </main>
+        <Footer />
+      </div>
     </BrowserRouter>
   );
 }

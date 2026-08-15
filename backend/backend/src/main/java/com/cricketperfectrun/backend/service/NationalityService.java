@@ -2,17 +2,23 @@ package com.cricketperfectrun.backend.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.io.InputStream;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * Derives each player's nationality purely from the imported international datasets.
@@ -86,7 +92,10 @@ public class NationalityService {
                 continue;
             }
 
-            try (Stream<Path> files = Files.list(folder)) {
+            Path archive = folder.resolveSibling(folder.getFileName() + ".zip");
+            if (Files.isRegularFile(archive)) {
+                scanArchive(archive, counts);
+            } else try (Stream<Path> files = Files.list(folder)) {
                 files.filter(path -> path.toString().endsWith(".json"))
                         .forEach(path -> scanFile(path, counts));
             } catch (Exception e) {
@@ -114,26 +123,56 @@ public class NationalityService {
     }
 
     private void scanFile(Path path, Map<String, Map<String, Integer>> counts) {
-        try {
-            JsonNode players = mapper.readTree(path.toFile()).path("info").path("players");
-            if (!players.isObject()) {
-                return;
-            }
+        // Stop after the small info.players object instead of parsing every ball in the match.
+        try (InputStream input = Files.newInputStream(path)) {
+            scanStream(input, counts);
+        } catch (Exception e) {
+            // Ignore unreadable files; nationality is best-effort.
+        }
+    }
 
-            Iterator<String> teams = players.fieldNames();
-            while (teams.hasNext()) {
-                String team = teams.next();
-                for (JsonNode playerNode : players.path(team)) {
-                    String name = playerNode.asText("");
-                    if (name.isBlank()) {
-                        continue;
-                    }
-                    counts.computeIfAbsent(name, ignored -> new HashMap<>())
-                            .merge(team, 1, Integer::sum);
+    private void scanArchive(Path archive, Map<String, Map<String, Integer>> counts) {
+        try (ZipFile zip = new ZipFile(archive.toFile())) {
+            for (ZipEntry entry : Collections.list(zip.entries())) {
+                if (entry.isDirectory() || !entry.getName().endsWith(".json")) {
+                    continue;
+                }
+                try (InputStream input = zip.getInputStream(entry)) {
+                    scanStream(input, counts);
                 }
             }
         } catch (Exception e) {
-            // Ignore unreadable files; nationality is best-effort.
+            LOGGER.warn("Failed scanning nationality archive {}", archive, e);
+        }
+    }
+
+    private void scanStream(InputStream input, Map<String, Map<String, Integer>> counts) {
+        try (JsonParser parser = mapper.getFactory().createParser(input)) {
+            while (parser.nextToken() != null) {
+                if (parser.currentToken() == JsonToken.FIELD_NAME && "players".equals(parser.currentName())) {
+                    parser.nextToken();
+                    JsonNode players = mapper.readTree(parser);
+                    if (!players.isObject()) {
+                        return;
+                    }
+
+                    Iterator<String> teams = players.fieldNames();
+                    while (teams.hasNext()) {
+                        String team = teams.next();
+                        for (JsonNode playerNode : players.path(team)) {
+                            String name = playerNode.asText("");
+                            if (name.isBlank()) {
+                                continue;
+                            }
+                            counts.computeIfAbsent(name, ignored -> new HashMap<>())
+                                    .merge(team, 1, Integer::sum);
+                        }
+                    }
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            // Nationality is best-effort; ignore an unreadable match entry.
         }
     }
 }

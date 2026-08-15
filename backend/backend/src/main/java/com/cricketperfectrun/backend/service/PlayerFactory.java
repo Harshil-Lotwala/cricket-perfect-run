@@ -36,9 +36,12 @@ public class PlayerFactory {
         double bowlingAverage = ratingService.bowlingAverage(stats);
         double economy = ratingService.economy(stats);
 
-        boolean overseas = metadataService.isOverseas(stats.playerName());
+        // International squads are already keyed by country, so no global nationality index is
+        // needed. IPL is the only mode that needs player-to-country enrichment.
+        boolean franchiseMode = "ipl".equals(stats.mode());
+        boolean overseas = franchiseMode && metadataService.isOverseas(stats.playerName());
         boolean keeperEligible = metadataService.isKeeperEligible(stats.mode(), stats.playerName());
-        String country = metadataService.country(stats.playerName());
+        String country = franchiseMode ? metadataService.country(stats.playerName()) : stats.team();
 
         double leadershipScore = leadershipRatingService.captainImpact(stats.mode(), stats.playerName());
         double keepingScore = keeperEligible
