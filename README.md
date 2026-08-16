@@ -4,6 +4,29 @@ Perfect Run is a full-stack cricket drafting and season-simulation game. Build a
 
 The player catalogue, available seasons, team rosters, statistics, roles, and ratings are derived from local [Cricsheet](https://cricsheet.org/) match data. Simulation is seeded and reproducible, while captain and wicketkeeper choices meaningfully change team strength and results.
 
+## Play the live game
+
+### [Play Perfect Run →](https://harshil-lotwala.github.io/cricket-perfect-run/)
+
+The production frontend is hosted on GitHub Pages, the Spring Boot API runs on Render, and explicitly approved leaderboard records use Supabase PostgreSQL. The first request after a period of inactivity can take longer because the free Render service may be asleep.
+
+| Service | Live address |
+| --- | --- |
+| Game | [harshil-lotwala.github.io/cricket-perfect-run](https://harshil-lotwala.github.io/cricket-perfect-run/) |
+| API health | [perfect-run-api.onrender.com/api/health](https://perfect-run-api.onrender.com/api/health) |
+| Source | [github.com/Harshil-Lotwala/cricket-perfect-run](https://github.com/Harshil-Lotwala/cricket-perfect-run) |
+
+## Project guide
+
+1. [Play a run step by step](#play-a-run-step-by-step)
+2. [Understand the four formats](#game-modes)
+3. [Review drafting and simulation rules](#competition-and-match-engine)
+4. [Run the project locally](#local-development-step-by-step)
+5. [Test and build](#validation)
+6. [Deploy from GitHub](#free-production-deployment-github-pages--render--supabase)
+7. [Use the API](#api)
+8. [Troubleshoot common problems](#troubleshooting)
+
 ## Features
 
 - Four playable formats: IPL, ODI World Cup, T20 World Cup, and WTC.
@@ -30,27 +53,28 @@ The player catalogue, available seasons, team rosters, statistics, roles, and ra
 
 | Mode | Competition path | Perfect run |
 | --- | --- | ---: |
-| IPL | 14 league matches and IPL Page playoffs | 16–0 |
+| IPL | 14 league matches and IPL-style playoffs | 16–0 |
 | ODI World Cup | 9 league matches, semifinal, final | 11–0 |
 | T20 World Cup | 6 group/Super 8 matches, semifinal, final | 8–0 |
 | World Test Championship | 9 unique WTC nations and the final | 10–0 |
 
 Qualification is driven by the league table. World Cups use `1st vs 4th` and `2nd vs 3rd` semifinals. WTC sends the top two directly to the final. IPL uses Qualifier 1, Eliminator, Qualifier 2, and the Final, including the top-two second chance.
 
-## How a run works
+## Play a run step by step
 
-1. Choose a format.
-2. Keep **Random editions** for a varied historical field, or select a competition year. A selected year caps draft reveals and makes every Historical Squad opponent use that exact edition.
-3. Reveal a historical squad and load its players.
-4. Draft one player, then continue until the XI is complete.
-5. Meet the mode rules:
+1. Open the [live game](https://harshil-lotwala.github.io/cricket-perfect-run/) and choose IPL, ODI World Cup, T20 World Cup, or WTC.
+2. Choose the opponent pool: **Historical Squads** uses real team-season rosters; **Legacy XI** builds stronger best-of-era opponents.
+3. Keep **Random editions** for a varied historical field, or select a competition year. A selected year caps draft reveals and makes every Historical Squad opponent use that exact edition.
+4. Reveal a squad, load its player cards, and draft exactly one player from that reveal. Team and year rerolls are limited.
+5. Repeat until the XI is complete while meeting the mode rules:
    - exactly 11 players;
    - at least one wicketkeeper;
    - no more than four overseas players in IPL.
-6. Select a captain and an eligible wicketkeeper.
-7. Choose Historical Squads or Legacy XI opponents and optionally enable Hard Mode.
-8. Simulate the competition and inspect standings, scorecards, and awards.
-9. If the Hard Mode run finishes unbeaten, upload the verified XI from Results and share it.
+6. Select one captain and assign the wicketkeeper role to an eligible player. Both choices affect the deterministic simulation.
+7. Enable Hard Mode before the first draft pick if desired. It cannot be changed after drafting begins.
+8. Simulate the complete competition. Tosses, innings order, chases, league qualification, knockouts, standings, awards, and scorecards are generated together.
+9. Review the result, open individual scorecards, copy the share text, or use one of the two post-simulation swaps to replace a player and try again.
+10. If a Hard Mode run finishes unbeaten, explicitly approve and publish it to that format's verified leaderboard. No other result is stored permanently.
 
 The same XI, role selections, mode settings, and run seed always reproduce the same season. Changing the captain or keeper changes the deterministic simulation identity and therefore the results.
 
@@ -109,7 +133,9 @@ Spring Boot controllers
         │
         ├── catalogue/player requests ──► indexed Cricsheet caches
         ├── simulation requests ────────► seeded competition engine
-        └── approved leaderboard posts ─► server replay + JSON storage
+        └── approved leaderboard posts ─► server replay
+                                             ├── production: Supabase PostgreSQL
+                                             └── local fallback: JSON file
 ```
 
 The frontend is a client-rendered single-page application. Routes are loaded only when opened, so entering Draft does not download Results, Scorecard, or Leaderboard code in advance. During development, Vite forwards `/api` to Spring Boot. In production, serve both applications behind one origin or set `VITE_API_URL` to the backend URL at build time.
@@ -184,7 +210,10 @@ Every format grants two post-simulation swaps. A swap removes one player, consum
 
 ```text
 cricket-perfect-run/
+├── .github/workflows/
+│   └── deploy-frontend.yml     # main → GitHub Pages deployment
 ├── backend/backend/
+│   ├── Dockerfile              # Render production image
 │   ├── pom.xml
 │   └── src/main/
 │       ├── java/com/cricketperfectrun/backend/
@@ -205,19 +234,31 @@ cricket-perfect-run/
 │       ├── services/            # native HTTP client
 │       ├── store/               # run state and persistence policy
 │       └── utils/               # cricket display helpers
-└── README.md
+├── render.yaml                 # Render backend Blueprint
+└── README.md                   # complete project guide
 ```
 
-## Prerequisites
+## Local development step by step
+
+### 1. Prerequisites
 
 - Java 21
 - Node.js 20 or newer
 - npm
-- Cricsheet JSON archives
+- Git
 
-## Data setup
+The repository includes compact generated cricket aggregates for normal development and production, so downloading the full raw Cricsheet workspace is not required to run the game.
 
-Download the JSON archives from [Cricsheet downloads](https://cricsheet.org/downloads/) and extract them into:
+### 2. Clone the repository
+
+```bash
+git clone https://github.com/Harshil-Lotwala/cricket-perfect-run.git
+cd cricket-perfect-run
+```
+
+### 3. Optional raw-data rebuild
+
+Only contributors rebuilding the generated statistics need the raw archives. Download JSON archives from [Cricsheet downloads](https://cricsheet.org/downloads/) and extract them into:
 
 ```text
 data/cricsheet/
@@ -227,18 +268,16 @@ data/cricsheet/
 └── tests_json/
 ```
 
-The backend searches common project-relative data locations, so it works when launched from `backend/backend` as shown below. The large data directory is intentionally excluded from Git.
+The backend searches common project-relative data locations. The large raw-data directory is intentionally excluded from Git.
 
 Optional metadata supplements live in `backend/backend/src/main/resources/`:
 
 - `keeper_players.csv` adds known wicketkeeper names.
 - `player_metadata.csv` can provide country or role overrides.
 
-## Run locally
+### 4. Start the backend
 
-Use two terminal windows from the repository root.
-
-### Terminal 1: backend
+In the first terminal, from the repository root:
 
 ```bash
 cd backend/backend
@@ -247,7 +286,15 @@ cd backend/backend
 
 The API starts at `http://localhost:8080`.
 
-### Terminal 2: frontend
+Confirm it is healthy:
+
+```bash
+curl http://localhost:8080/api/health
+```
+
+### 5. Start the frontend
+
+In a second terminal, from the repository root:
 
 ```bash
 cd frontend
@@ -261,11 +308,11 @@ instead of silently opening `5174` and leaving you on an outdated tab. Running M
 also removes stale compiled classes, while the configured Spring Boot main class prevents duplicate
 entry-point discovery.
 
-Open `http://localhost:5173`. If that port is occupied, Vite now stops with a clear error so an older frontend cannot remain hidden behind a second port.
+Open [http://localhost:5173](http://localhost:5173). If that port is occupied, Vite stops with a clear error so an older frontend cannot remain hidden behind a second port.
 
 The Vite development server proxies `/api` requests to port `8080`. Both processes must remain running.
 
-### Production build
+### 6. Create production builds
 
 ```bash
 cd frontend
@@ -288,7 +335,7 @@ cd backend/backend
 java -jar target/backend-0.0.1-SNAPSHOT.jar
 ```
 
-### Free production deployment: GitHub Pages + Render + Supabase
+## Free production deployment: GitHub Pages + Render + Supabase
 
 The repository is configured for continuous deployment from GitHub's `main` branch:
 
@@ -302,7 +349,7 @@ Current production endpoints:
 - Game: `https://harshil-lotwala.github.io/cricket-perfect-run/`
 - API: `https://perfect-run-api.onrender.com/api`
 
-#### 1. Create the free leaderboard database
+### 1. Create the free leaderboard database
 
 1. Create a free Supabase project.
 2. Open **Connect**, select the **Session pooler** connection string, and copy its PostgreSQL URI.
@@ -310,7 +357,7 @@ Current production endpoints:
 
 Supabase is used only for leaderboard entries that meet all eligibility rules and that the player explicitly approves for publishing. Ordinary simulations and losing runs are not persisted.
 
-#### 2. Deploy the backend on Render
+### 2. Deploy the backend on Render
 
 1. In Render, create a **Blueprint** and connect this GitHub repository.
 2. Select the repository's `main` branch. Render reads `render.yaml` from the repository root.
@@ -320,7 +367,7 @@ Supabase is used only for leaderboard entries that meet all eligibility rules an
 
 The Blueprint uses Render's free web-service plan and never requests a disk or payment. Free services sleep after inactivity, so the first request after a quiet period can take longer. Durable approved leaderboard entries live in Supabase instead of Render's temporary filesystem.
 
-#### 3. Deploy the frontend on GitHub Pages
+### 3. Deploy the frontend on GitHub Pages
 
 1. Open the repository's **Settings → Pages**.
 2. Set **Source** to **GitHub Actions**.
@@ -329,7 +376,7 @@ The Blueprint uses Render's free web-service plan and never requests a disk or p
 
 GitHub Pages and Render both watch `main`, so every successful push automatically updates the live application and API. Supabase persists only player-approved qualifying leaderboard records. Do not commit database credentials, secrets, or a generated leaderboard file.
 
-#### Why this project does not use Vercel
+### Why this project does not use Vercel
 
 Vercel is technically compatible—the portable `frontend/vercel.json` remains in the repository—but its GitHub import flow did not attach this repository cleanly during setup and repeatedly led into a trial/clone flow. Because this deployment had a strict zero-dollar requirement, GitHub Pages was selected as the simpler no-card static host. It provides the required `main`-branch automatic deployment and works with the separately hosted Render API.
 
