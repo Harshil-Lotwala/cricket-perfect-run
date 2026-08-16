@@ -60,19 +60,14 @@ public class OpponentService {
     }
 
     private List<Squad> pickHistorical(String mode, int count, long seed, Integer selectedSeason) {
-        boolean exactTournamentEdition = isWorldCup(mode) && selectedSeason != null;
         List<TeamSeasonCard> pool = new ArrayList<>(parserService.getTeamSeasonCards(mode).stream()
                 .filter(card -> card.playerCount() >= XI)
                 .filter(card -> !isWtc(mode) || WTC_COUNTRIES.contains(card.team()))
-                .filter(card -> selectedSeason == null
-                        || (exactTournamentEdition ? card.year() == selectedSeason : card.year() <= selectedSeason))
+                .filter(card -> selectedSeason == null || card.year() == selectedSeason)
                 .toList());
         if (pool.isEmpty()) {
-            // Invalid/stale season: fall back to the full pool so simulation can still complete.
-            pool = new ArrayList<>(parserService.getTeamSeasonCards(mode).stream()
-                    .filter(card -> card.playerCount() >= XI)
-                    .filter(card -> !isWtc(mode) || WTC_COUNTRIES.contains(card.team()))
-                    .toList());
+            // Never import a different season for an invalid or stale request.
+            return List.of();
         }
 
         // Pick the strongest qualifying sides, rather than randomly dropping a contender.
@@ -83,28 +78,42 @@ public class OpponentService {
                         .thenComparing(Squad::name))
                 .toList();
         // Ranking still decides which distinct team identities deserve a place when the pool is
-        // larger than the competition. The historical version of each chosen identity, however,
-        // is selected from all eligible seasons by the run seed—not permanently fixed to its peak.
+        // larger than the competition. Every selected identity remains in the exact edition;
+        // longer fixture lists repeat those teams instead of importing another season.
         Map<String, List<Squad>> versionsByTeam = new LinkedHashMap<>();
         for (Squad squad : ranked) {
             versionsByTeam.computeIfAbsent(teamIdentity(mode, squad.name()), ignored -> new ArrayList<>())
                     .add(squad);
         }
 
-        List<Squad> opponents = new ArrayList<>();
+        List<Squad> editionTeams = new ArrayList<>();
         for (Map.Entry<String, List<Squad>> entry : versionsByTeam.entrySet()) {
             List<Squad> versions = entry.getValue();
             long teamSeed = seed
                     ^ ((long) entry.getKey().hashCode() << 32)
                     ^ 0x5DEECE66DL;
             Random versionRandom = new Random(teamSeed);
-            opponents.add(versions.get(versionRandom.nextInt(versions.size())));
-            if (opponents.size() == count) {
+            editionTeams.add(versions.get(versionRandom.nextInt(versions.size())));
+            if (editionTeams.size() == count) {
                 break;
             }
         }
+        if (editionTeams.isEmpty()) return List.of();
 
-        return opponents;
+        // Some editions have fewer distinct teams than the configured fixture count. Repeat only
+        // those same edition squads to complete the schedule, just as teams meet more than once in
+        // a real league. Never substitute another season.
+        List<Squad> schedule = new ArrayList<>(editionTeams);
+        Random scheduleRandom = new Random(seed ^ 0xD1B54A32D192ED03L);
+        while (schedule.size() < count) {
+            List<Squad> round = new ArrayList<>(editionTeams);
+            java.util.Collections.shuffle(round, scheduleRandom);
+            for (Squad squad : round) {
+                if (schedule.size() == count) break;
+                schedule.add(squad);
+            }
+        }
+        return schedule;
     }
 
     private Squad historicalSquad(String mode, TeamSeasonCard card) {
@@ -124,7 +133,7 @@ public class OpponentService {
 
     private List<Squad> pickLegacy(String mode, int count, Integer selectedSeason) {
         Set<String> eligibleTeams = new HashSet<>();
-        if (isWorldCup(mode) && selectedSeason != null) {
+        if (selectedSeason != null) {
             parserService.getTeamSeasonCards(mode).stream()
                     .filter(card -> card.year() == selectedSeason && card.playerCount() >= XI)
                     .map(TeamSeasonCard::team)
@@ -148,10 +157,6 @@ public class OpponentService {
             }
         }
         return opponents;
-    }
-
-    private boolean isWorldCup(String mode) {
-        return mode != null && mode.endsWith("world-cup");
     }
 
     private boolean isWtc(String mode) {

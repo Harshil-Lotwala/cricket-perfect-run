@@ -24,7 +24,7 @@ const freshRun = (mode) => ({
 
   opponentType: "historical",
   hardMode: false,
-  seasonCap: null, // latest season allowed for reveals/opponents (null = no cap)
+  seasonCap: null, // null = random opponent editions; a year = exact historical edition
 
   selectedTeam: [],
   selectedCaptainId: null,
@@ -56,8 +56,8 @@ const useGameStore = create(
           teamsByYearByMode: { ...state.teamsByYearByMode, [mode]: teamsByYear },
           yearsByMode: { ...state.yearsByMode, [mode]: years },
           seasonCap:
-            state.gameMode === mode && !years.includes(state.seasonCap)
-              ? years.at(-1) ?? null
+            state.gameMode === mode && state.seasonCap !== null && !years.includes(state.seasonCap)
+              ? null
               : state.seasonCap,
         })),
 
@@ -230,8 +230,8 @@ const useGameStore = create(
           return { hardMode: !state.hardMode, draftError: "" };
         }),
 
-      // Cap the latest usable season. If the current (un-drafted) reveal is now out of range,
-      // roll a fresh reveal within the cap.
+      // Null keeps opponent editions random. A selected year caps draft reveals and fixes every
+      // Historical Squad opponent to that exact competition edition.
       setSeasonCap: (year) =>
         set((state) => {
           const cap = Number(year) || null;

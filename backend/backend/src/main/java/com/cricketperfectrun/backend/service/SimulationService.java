@@ -730,7 +730,9 @@ public class SimulationService {
 
         Random standRng = new Random(seed * 131 + 17);
         double avgField = opponents.stream().mapToInt(Squad::strength).average().orElse(70);
-        for (Squad opp : opponents) {
+        Map<String, Squad> uniqueOpponents = new LinkedHashMap<>();
+        for (Squad opponent : opponents) uniqueOpponents.putIfAbsent(opponent.label(), opponent);
+        for (Squad opp : uniqueOpponents.values()) {
             double q = 1.0 / (1.0 + Math.exp(-((opp.strength() - avgField)) / 8.0));
             int oppWins = 0;
             int oppDraws = 0;

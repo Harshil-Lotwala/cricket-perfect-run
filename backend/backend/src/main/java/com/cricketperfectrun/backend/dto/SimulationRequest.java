@@ -14,7 +14,7 @@ public class SimulationRequest {
     private String opponentType; // "historical" | "legacy"
     private boolean hardMode;
     private Long seed;
-    private Integer maxSeason; // World Cups: exact edition; leagues: latest allowed season (inclusive)
+    private Integer maxSeason; // Null = random editions; otherwise draft cutoff and exact opponent edition.
 
     public String getMode() {
         return mode;

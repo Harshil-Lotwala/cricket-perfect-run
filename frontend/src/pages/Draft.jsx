@@ -251,14 +251,13 @@ function Draft() {
                 onChange={(event) => store.setSeasonCap(event.target.value)}
                 className="season-select"
               >
+                <option value="">Random editions</option>
                 {(yearsByMode[mode] || []).map((year) => (
                   <option key={year} value={year}>{year}</option>
                 ))}
               </select>
               <span className="text-xs text-slate-500 col-span-2">
-                {mode.endsWith("world-cup")
-                  ? "Drafts use seasons up to this edition; opponents come from this exact World Cup."
-                  : "Drafts and historical opponents use seasons up to this year."}
+                Random mixes eligible historical editions. Choose a year to use that exact tournament field; draft reveals use seasons up to it.
               </span>
             </label>
 

@@ -15,7 +15,8 @@ The player catalogue, available seasons, team rosters, statistics, roles, and ra
 - Two confirmed post-simulation player swaps per run in every format, with one-for-one redrafting and leader revalidation.
 - Hard Mode that permanently locks for the run when the first player is drafted.
 - Historical Squad and Legacy XI opponent modes.
-- One historical version per opponent identity: a tournament can contain CSK 2018 or India 2019, but never another CSK or India season in the same run. The eligible season for each identity is selected by the run seed, so a new run can face a different version of that team; World Cup modes still use the exact selected edition.
+- Historical opponents default to random eligible editions. Selecting a year switches every format to an exact-edition field: selecting 2022 adds the drafted XI to that 2022 competition and every historical opponent is its 2022 version.
+- One row per opponent identity in standings. When a format needs more fixtures than the edition has teams, opponents repeat as fixtures without importing squads from another season.
 - Correct format-specific qualification paths and knockout brackets.
 - Full scorecards, league tables, and awards for the current session without silently persisting private results.
 - Format-aware results presentation with a clear season verdict, finish, record, XI identity, copyable challenge text, and reduced-motion-safe champion confetti.
@@ -39,7 +40,7 @@ Qualification is driven by the league table. World Cups use `1st vs 4th` and `2n
 ## How a run works
 
 1. Choose a format.
-2. Set the last eligible season or tournament edition.
+2. Keep **Random editions** for a varied historical field, or select a competition year. A selected year caps draft reveals and makes every Historical Squad opponent use that exact edition.
 3. Reveal a historical squad and load its players.
 4. Draft one player, then continue until the XI is complete.
 5. Meet the mode rules:
@@ -71,7 +72,7 @@ Leaderboard submissions are not trusted blindly. The backend:
 6. rejects the entry if the claimed record differs;
 7. ranks verified entries by perfect run, championship, wins, draws, losses, and rating.
 
-Each entry includes the full XI, source seasons, captain, wicketkeeper, opponent type, record, and shareable anchor link. Leaderboard data is stored in `data/leaderboard.json`, which is intentionally ignored by Git.
+Each entry includes the full XI, source seasons, captain, wicketkeeper, opponent type, record, and shareable anchor link. Production entries are stored in Supabase PostgreSQL; local development falls back to `data/leaderboard.json`, which is intentionally ignored by Git.
 
 The global **Rules** dialog explains drafting, the keeper and captain requirements, opponent uniqueness, every format's tournament path, Hard Mode locking, and leaderboard eligibility from any page.
 
@@ -95,7 +96,7 @@ The global **Rules** dialog explains drafting, the keeper and captain requiremen
 - Jackson
 - In-memory parsed-data caches
 
-No database is required.
+A database is optional for local play. Production uses Supabase PostgreSQL only for explicitly approved, verified leaderboard entries; ordinary runs remain private and session-only.
 
 ## Architecture and request flow
 
@@ -155,7 +156,7 @@ Every run is deterministic for its complete input, not universally fixed. The sa
 
 ### Opponents
 
-Historical mode ranks eligible identities by strength, admits only one version of each identity, and uses the run seed to select an eligible season. Franchise renames share one identity. World Cup historical opponents come from the selected edition. Legacy XI mode builds stronger best-of-era squads from the same real data.
+Historical mode defaults to random eligible team editions. When the player selects a year, it constructs the field from that exact edition in IPL, ODI World Cup, T20 World Cup, and WTC. Selecting 2022 therefore means every historical opponent label and roster is from 2022—not merely a season at or before 2022. Franchise renames share one canonical identity, and standings contain one row per identity. If the competition schedule is longer than the number of unique teams, the same edition's teams are drawn again for return fixtures. Legacy XI mode still builds best-of-era rosters, but a selected year limits eligible team identities to that edition.
 
 ### Toss and innings
 
@@ -287,14 +288,19 @@ cd backend/backend
 java -jar target/backend-0.0.1-SNAPSHOT.jar
 ```
 
-### Free production deployment: Vercel + Render + Supabase
+### Free production deployment: GitHub Pages + Render + Supabase
 
 The repository is configured for continuous deployment from GitHub's `main` branch:
 
-- `frontend/vercel.json` configures the Vite SPA for Vercel, including client-side route fallback.
+- `.github/workflows/deploy-frontend.yml` builds and publishes the React application to GitHub Pages after every push to `main`.
 - `render.yaml` defines the free Render backend, health check, Docker runtime, and required database URL.
 - `backend/backend/Dockerfile` creates a Java 21 multi-stage production image and runs it as an unprivileged user.
 - `backend/backend/src/main/resources/cricket-data/` contains compact generated player-season aggregates. The deployed API therefore does not need the 567 MB raw Cricsheet workspace or a cold parse at startup.
+
+Current production endpoints:
+
+- Game: `https://harshil-lotwala.github.io/cricket-perfect-run/`
+- API: `https://perfect-run-api.onrender.com/api`
 
 #### 1. Create the free leaderboard database
 
@@ -309,19 +315,23 @@ Supabase is used only for leaderboard entries that meet all eligibility rules an
 1. In Render, create a **Blueprint** and connect this GitHub repository.
 2. Select the repository's `main` branch. Render reads `render.yaml` from the repository root.
 3. Set `DATABASE_URL` to the private Supabase Session pooler URI.
-4. Set `APP_CORS_ALLOWED_ORIGINS` when prompted. Initially use the Vercel production domain, for example `https://perfect-run.vercel.app`. Multiple values are comma-separated and preview domains may use `https://*.vercel.app`.
-4. Create the Blueprint. The API health endpoint is `/api/health` and the public API base is `https://<render-service>.onrender.com/api`.
+4. Set `APP_CORS_ALLOWED_ORIGINS=https://harshil-lotwala.github.io` when prompted. Multiple origins are comma-separated.
+5. Create the Blueprint. The API health endpoint is `/api/health` and the public API base is `https://<render-service>.onrender.com/api`.
 
 The Blueprint uses Render's free web-service plan and never requests a disk or payment. Free services sleep after inactivity, so the first request after a quiet period can take longer. Durable approved leaderboard entries live in Supabase instead of Render's temporary filesystem.
 
-#### 3. Deploy the frontend on Vercel
+#### 3. Deploy the frontend on GitHub Pages
 
-1. Import the same GitHub repository in Vercel.
-2. Set the project **Root Directory** to `frontend` and keep the detected Vite framework settings.
-3. Add `VITE_API_URL=https://<render-service>.onrender.com/api` to the Production environment.
-4. Deploy, then copy the final Vercel domain back into Render's `APP_CORS_ALLOWED_ORIGINS` value.
+1. Open the repository's **Settings → Pages**.
+2. Set **Source** to **GitHub Actions**.
+3. Push to `main`. The workflow installs dependencies, builds with `VITE_API_URL=https://perfect-run-api.onrender.com/api` and `VITE_BASE_PATH=/cricket-perfect-run/`, then publishes `frontend/dist`.
+4. Check the repository's **Actions** tab if a deployment fails.
 
-Both providers then watch `main`: every successful push automatically rebuilds and publishes the affected service. Pull requests and non-production branches can create Vercel previews without replacing production. Do not commit database credentials, secrets, or a generated leaderboard file.
+GitHub Pages and Render both watch `main`, so every successful push automatically updates the live application and API. Supabase persists only player-approved qualifying leaderboard records. Do not commit database credentials, secrets, or a generated leaderboard file.
+
+#### Why this project does not use Vercel
+
+Vercel is technically compatible—the portable `frontend/vercel.json` remains in the repository—but its GitHub import flow did not attach this repository cleanly during setup and repeatedly led into a trial/clone flow. Because this deployment had a strict zero-dollar requirement, GitHub Pages was selected as the simpler no-card static host. It provides the required `main`-branch automatic deployment and works with the separately hosted Render API.
 
 To validate the exact backend container locally:
 
@@ -402,6 +412,7 @@ Example simulation body:
 ```
 
 `team` contains the eleven player objects returned by the player endpoint.
+`maxSeason` is optional: omit it or send `null` for random eligible opponent editions; send a data-backed year to require that exact edition for every Historical Squad opponent.
 
 Catalogue and player endpoints send public one-hour cache headers because historical data is immutable during a running backend process. Simulation and publication endpoints are never browser-cached.
 
@@ -471,7 +482,7 @@ Manual end-to-end checks should cover:
 
 Normal games are private and session-only. The application never automatically uploads or permanently saves every result. Browser persistence keeps enough catalogue/draft state to recover an interrupted draft but explicitly removes results, scorecards, loaded squad payloads, and runtime caches.
 
-The only durable player-created record is an unbeaten Hard Mode run that the player explicitly approves. The backend replays it before writing. The chosen display name and cricket XI are stored in `data/leaderboard.json`. This project has no accounts, passwords, payments, analytics trackers, or advertising cookies.
+The only durable player-created record is an unbeaten Hard Mode run that the player explicitly approves. The backend replays it before writing. Production stores the chosen display name and cricket XI in Supabase PostgreSQL; local development uses `data/leaderboard.json` when `DATABASE_URL` is absent. This project has no accounts, passwords, payments, analytics trackers, or advertising cookies.
 
 ## Configuration reference
 
@@ -483,6 +494,7 @@ The only durable player-created record is an unbeaten Hard Mode run that the pla
 | `APP_CORS_ALLOWED_ORIGINS` | Spring Boot | local Vite origins | Comma-separated allowed frontend origin patterns |
 | `server.compression.*` | `application.properties` | enabled | Text/API response compression |
 | `VITE_API_URL` | frontend build environment | `/api` | API base URL embedded at build time |
+| `VITE_BASE_PATH` | frontend build environment | `/` | Static hosting base path; production GitHub Pages uses `/cricket-perfect-run/` |
 | Vite `server.port` | `vite.config.js` | `5173` | Local frontend port |
 | Vite `strictPort` | `vite.config.js` | `true` | Prevents accidental fallback to another port |
 
